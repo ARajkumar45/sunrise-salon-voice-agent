@@ -202,3 +202,136 @@ Reproduce: `uv run python scripts/fake_caller.py ask tests/audio/sunday.wav`, th
 > "Latency is measured in the agent, per reply, from the moment the detector decides the caller
 > has finished to the first audio sent. I found the framework back-dates its own timestamp, so
 > I read the clock myself to match the assignment's definition, and I log both."
+
+---
+
+## Milestone 2: bookings (Wed 25 Nov, night)
+
+### What was built
+The agent can now book, move and cancel appointments by voice. It checks real availability in
+the database first, understands "tomorrow" in the salon's timezone, respects each stylist's
+days and hours, and cannot double book.
+
+### How double booking is prevented (the most important answer on the review call)
+One line in `app/schema.sql`:
+
+```sql
+CREATE UNIQUE INDEX one_booking_per_slot ON bookings (staff_id, starts_at) WHERE status = 'booked';
+```
+
+It tells Postgres: a staff member can have only one live booking per start time. Booking is a
+single `INSERT`. If two calls insert the same slot at the same instant, Postgres itself accepts
+one and rejects the other with a "unique violation". `booking.book` catches that and tells the
+agent "that slot has just been taken, offer another time".
+
+Why this and not a check in code: "look if it is free, then insert" has a gap between the look
+and the insert, and two calls can both slip through it. The database closing the gap means no
+amount of timing luck, bugs in my code, or mistakes by the LLM can create a double booking.
+
+- Moving a booking is one `UPDATE` of the start time, so the same index protects it, and if the
+  new slot is taken nothing changes: the caller keeps the original booking.
+- Cancelled rows are excluded (`WHERE status = 'booked'`), so a cancelled slot can be rebooked.
+- The index is on the staff member, not the service. Anita's 10:00 is one slot whether it is a
+  men's haircut or a blow dry.
+
+**Proof:** `tests/test_double_booking.py` fires 50 booking attempts at one slot at the same
+moment over 20 real database connections, 20 rounds in a row. Exactly one wins each time. It
+also races two reschedules, a reschedule against a new booking, and 30 callers for a slot that
+was just cancelled. I also ran the same tests with the index removed: all four fail. So the
+tests really detect double booking; they do not pass by accident.
+
+### How a booking call flows
+The LLM has five tools (`app/tools.py`). Each is a small function that calls `app/booking.py`.
+
+| Tool | What it does |
+|---|---|
+| `check_availability(service, date)` | Free times that day. If the stylist is off or full, the next two days with free times. |
+| `book_appointment(service, date, time, name, phone)` | Books. Needs two calls, see below. |
+| `find_my_bookings(phone)` | The caller's own upcoming bookings. |
+| `reschedule_booking(booking_id, phone, new_date, new_time)` | Moves a booking. |
+| `cancel_booking(booking_id, phone)` | Cancels, and says whether it was free. |
+
+The tools are created per call by `build_tools(business, call_id, ...)`. The business is baked
+in. The LLM chooses a service and a date, but there is no parameter for "which business", so it
+cannot reach another business's data even if a caller talks it into trying.
+
+### Safety rules written in code, not left to the prompt
+LLMs sometimes act before asking. Two rules in `build_tools` make that harmless:
+- **New booking takes two calls.** The first call to `book_appointment` books nothing and
+  returns "ask the caller to confirm" with the details and the phone number digit by digit.
+  Only a second call with the same details, after the caller has spoken again, books it.
+- **Move and cancel need the caller to have spoken since `find_my_bookings`.** So the caller
+  has heard which booking was found and answered before anything changes.
+
+The counter of "how many times has the caller spoken" comes from `CallRecorder.caller_lines`.
+
+### Dates and times
+- `app/prompt.py` gives the LLM the current date and time in the business's timezone and a list
+  of the next 10 days as `Thu 26 Nov=2026-11-26`. The LLM picks the date from that list.
+- The tools accept only `YYYY-MM-DD` and 24-hour `HH:MM`, and check them against the stylist's
+  real working hours (`booking.check_slot`). A wrong day, a time outside hours, a time not on a
+  30-minute boundary, or a time in the past is refused with a reason the agent can say.
+- All times are stored as `TIMESTAMPTZ` and built with the business's timezone.
+
+### Privacy
+- `check_availability` returns free times only. Taken slots are simply missing. There is no
+  tool that can return a customer's name or number.
+- A booking can only be seen, moved or cancelled with the phone number it was made with, inside
+  the same business (`booking.get_own_booking`).
+
+### Rate limits: what happened and what changed
+During testing one booking call alone hit Groq's limit of 8,000 tokens a minute on the main
+model, because each request was about 2,350 tokens (instructions, tool descriptions, history).
+Two changes:
+- **Fallback.** `llm.FallbackAdapter` in `app/agent.py` tries `openai/gpt-oss-120b`, then
+  `qwen/qwen3.8-27b`, then `openai/gpt-oss-20b`. Each has its own 8,000 tokens a minute. The
+  call log showed the fallback take over mid-call with no failure heard by the caller.
+- **Smaller requests.** Shorter instructions and tool descriptions brought a request down to
+  about 1,470 to 1,700 tokens.
+
+### New and changed files
+- `app/booking.py`: slots, availability, book, move, cancel. All rules are here.
+- `app/tools.py`: the five tools and the two safety rules.
+- `app/schema.sql`: `bookings` table and the unique index.
+- `app/prompt.py`: appointment rules and a compact date list.
+- `app/agent.py`: three-model fallback, tools attached to the agent.
+- `tests/test_booking.py` (23 checks), `tests/test_double_booking.py` (4), `tests/test_tools.py` (5).
+- `Dockerfile`, `docker-compose.yml`: a `tests` service.
+
+### How to run the tests
+```bash
+docker compose --profile test run --rm tests
+```
+They use a separate throwaway database (`receptionist_test`), never the live one.
+Result on the VM: **32 passed**.
+
+### What was checked by scripted voice calls on the deployed agent
+- "Book a haircut for men tomorrow at 11 AM" on Wednesday night became Thursday 26 November,
+  availability was checked, details were read back, and after "yes" the row was in the database.
+- "Move my booking to tomorrow at 12:30": found the booking, checked the slot, asked, moved it.
+- "Cancel my booking": found it, said cancelling was free, asked, cancelled it.
+- "Book me a facial on Tuesday": "Kavya isn't working on Tuesdays", offered Wednesday and Friday.
+
+### Honest notes
+- **Replies that use a tool are slower:** 1.2 to 2.6 s in these runs, against 0.9 to 1.6 s
+  without. They count in the headline numbers. This puts the 2.0 s p95 target at risk and is
+  the first thing to work on in Milestone 5.
+- **The LLM once said the wrong time aloud.** After a move to 12:30 PM (correct in the database
+  and in the tool result) it said "12 PM". The booking was right, the sentence was wrong.
+- **Phone numbers by voice are fragile.** Speech to text sometimes drops a digit. The read-back
+  before booking is the defence. A phone number is also identification, not authentication:
+  anyone who knows your number could move your booking.
+- **The agent sometimes asks for confirmation one more time than needed.**
+- No human has made a booking by voice yet. Scripted calls use a synthetic voice.
+
+### How to explain this on the review call
+> "Double booking is impossible because the database refuses it. There is a unique index on
+> staff member and start time for live bookings, and booking is a single insert. If two calls
+> hit the same slot at once, Postgres lets one in and rejects the other, and my code turns that
+> rejection into 'that slot was just taken'. I did not rely on checking first, because check
+> then insert has a gap. The test fires 50 attempts at one slot at once, 20 times, and exactly
+> one wins each time. With the index removed the same test fails."
+
+> "The LLM never decides whether a slot is free. It asks a tool, the tool asks the database.
+> And it cannot change a booking before the caller has heard the details and answered: that
+> rule is in code, in build_tools, not just in the prompt."

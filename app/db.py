@@ -26,7 +26,7 @@ async def pool() -> AsyncConnectionPool:
     global _pool
     if _pool is None:
         _pool = AsyncConnectionPool(
-            os.environ["DATABASE_URL"], min_size=1, max_size=5, open=False,
+            os.environ["DATABASE_URL"], min_size=1, max_size=int(os.environ.get("DB_POOL_MAX", "5")), open=False,
             kwargs={"row_factory": dict_row, "autocommit": True},
         )
         await _pool.open()

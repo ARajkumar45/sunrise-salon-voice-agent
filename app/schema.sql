@@ -68,3 +68,24 @@ CREATE TABLE IF NOT EXISTS call_events (
     data    JSONB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS call_events_call ON call_events (call_id, id);
+
+CREATE TABLE IF NOT EXISTS bookings (
+    id             SERIAL PRIMARY KEY,
+    business_id    INT  NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    staff_id       INT  NOT NULL REFERENCES staff(id),
+    service_id     INT  NOT NULL REFERENCES services(id),
+    customer_name  TEXT NOT NULL,
+    customer_phone TEXT NOT NULL,
+    starts_at      TIMESTAMPTZ NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'booked' CHECK (status IN ('booked', 'cancelled')),
+    call_id        INT REFERENCES calls(id) ON DELETE SET NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- THE double-booking guard. One staff member can have only one live booking per start time.
+-- Postgres enforces this itself, so two calls booking the same slot at the same instant
+-- cannot both succeed, whatever the application code does. Cancelled rows do not count.
+CREATE UNIQUE INDEX IF NOT EXISTS one_booking_per_slot
+    ON bookings (staff_id, starts_at) WHERE status = 'booked';
+
+CREATE INDEX IF NOT EXISTS bookings_by_phone ON bookings (business_id, customer_phone);

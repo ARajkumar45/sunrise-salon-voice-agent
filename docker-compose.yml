@@ -23,7 +23,9 @@ services:
     restart: unless-stopped
 
   web:
-    build: .
+    build:
+      context: .
+      target: app
     command: uvicorn app.web:app --host 0.0.0.0 --port 8000
     env_file: .env
     environment:
@@ -40,7 +42,9 @@ services:
     restart: unless-stopped
 
   agent:
-    build: .
+    build:
+      context: .
+      target: app
     command: python -m app.agent start
     env_file: .env
     environment:
@@ -66,6 +70,20 @@ services:
     depends_on:
       - web
     restart: unless-stopped
+
+  # Automated tests. They use their own throwaway database (receptionist_test).
+  #   docker compose --profile test run --rm tests
+  tests:
+    profiles: ["test"]
+    build:
+      context: .
+      target: test
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   db_data:

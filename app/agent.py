@@ -16,12 +16,13 @@ import json
 import logging
 
 from dotenv import load_dotenv
-from livekit.agents import Agent, AgentServer, AgentSession, JobContext, JobProcess, cli
+from livekit.agents import Agent, AgentServer, AgentSession, JobContext, JobProcess, cli, llm
 from livekit.plugins import groq, silero
 
 from app import db
 from app.call_log import CallRecorder
 from app.prompt import build_instructions
+from app.tools import build_tools
 from app.tts_piper import PiperTTS
 
 load_dotenv()
@@ -29,7 +30,11 @@ log = logging.getLogger("receptionist")
 
 AGENT_NAME = "receptionist"
 STT_MODEL = "whisper-large-v3-turbo"  # open model (OpenAI Whisper), served by Groq
-LLM_MODEL = "openai/gpt-oss-120b"     # open-weight model, served by Groq
+# Open-weight LLMs served by Groq, in order of preference. Groq's free tier allows each model
+# 8,000 tokens a minute, counted separately. If one is rate limited or slow, the next is used.
+LLM_MODELS = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
+MAX_REPLY_TOKENS = 300     # replies are one or two sentences; this also caps runaway answers
+LLM_ATTEMPT_TIMEOUT = 4.0  # seconds to wait for a model before trying the next one
 
 # How long the caller must be quiet before we treat them as finished speaking.
 END_OF_SPEECH_SILENCE = 0.45
@@ -66,10 +71,14 @@ async def handle_call(ctx: JobContext) -> None:
 
     # 2. Build the voice pipeline.
     stt = groq.STT(model=STT_MODEL, language="en")
+    models = llm.FallbackAdapter(
+        [groq.LLM(model=m, max_completion_tokens=MAX_REPLY_TOKENS) for m in LLM_MODELS],
+        attempt_timeout=LLM_ATTEMPT_TIMEOUT,
+    )
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
         stt=stt,
-        llm=groq.LLM(model=LLM_MODEL),
+        llm=models,
         tts=PiperTTS(),
         turn_handling={
             # The voice detector alone decides when the caller has finished.
@@ -85,6 +94,7 @@ async def handle_call(ctx: JobContext) -> None:
     # 3. Record the transcript and the latency of every reply.
     recorder = CallRecorder(call_id, session)
     stt.on("metrics_collected", recorder.on_stt_metrics)
+    models.on("metrics_collected", recorder.on_llm_metrics)
     ctx.add_shutdown_callback(recorder.finish)
 
     # 4. Long silence: check in politely, then end the call.
@@ -109,7 +119,8 @@ async def handle_call(ctx: JobContext) -> None:
             silence_task = None
 
     # 5. Start talking. Instructions and greeting both come from the database.
-    await session.start(room=ctx.room, agent=Agent(instructions=build_instructions(business)))
+    agent = Agent(instructions=build_instructions(business), tools=build_tools(business, call_id, lambda: recorder.caller_lines))
+    await session.start(room=ctx.room, agent=agent)
     await session.say(business["greeting"])
 
 

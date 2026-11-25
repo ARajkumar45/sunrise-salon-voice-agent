@@ -40,6 +40,8 @@ class CallRecorder:
         self.stt_seconds: float | None = None          # time Whisper took for the last utterance
         self.transcript_at: float | None = None        # when the caller's words arrived as text
         self.used_tool = False
+        self.caller_lines = 0                          # how many times the caller has spoken
+        self.prompt_tokens: int | None = None          # size of the last request to the LLM
 
         session.on("user_state_changed", self.on_user_state)
         session.on("agent_state_changed", self.on_agent_state)
@@ -81,6 +83,9 @@ class CallRecorder:
             log.info("interruption: agent stopped %.3fs after caller speech was detected", stop_seconds)
             self.interrupt_started_at = None
 
+    def on_llm_metrics(self, metrics) -> None:
+        self.prompt_tokens = getattr(metrics, "prompt_tokens", None)
+
     def on_stt_metrics(self, metrics) -> None:
         self.stt_seconds = getattr(metrics, "duration", None)
 
@@ -91,6 +96,8 @@ class CallRecorder:
         if getattr(item, "type", None) != "message" or item.role not in ("user", "assistant"):
             return
         metrics = dict(item.metrics or {})
+        if item.role == "user":
+            self.caller_lines += 1
         self.write("said", {"who": "caller" if item.role == "user" else "agent",
                             "text": item.text_content, "interrupted": item.interrupted})
         if item.role == "assistant" and self.reply_latency is not None:
@@ -102,6 +109,7 @@ class CallRecorder:
                 "llm_first_token_s": round(metrics.get("llm_node_ttft", 0), 3) or None,
                 "tts_first_audio_s": round(metrics.get("tts_node_ttfb", 0), 3) or None,
                 "used_tool": self.used_tool,
+                "llm_prompt_tokens": self.prompt_tokens,
             }
             self.write("latency", timing)
             log.info("latency %s", timing)
