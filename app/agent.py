@@ -54,6 +54,15 @@ async def handle_call(ctx: JobContext) -> None:
             "interruption": {"mode": "vad", "min_duration": 0.3},
         },
     )
+
+    @session.on("conversation_item_added")
+    def log_turn(event) -> None:
+        """Log every spoken line with the framework's own latency numbers (seconds)."""
+        item = event.item
+        if getattr(item, "type", None) != "message":
+            return  # tool calls and other items are logged elsewhere
+        log.info("turn role=%s text=%r metrics=%s", item.role, item.text_content, dict(item.metrics or {}))
+
     await session.start(
         room=ctx.room,
         agent=Agent(
