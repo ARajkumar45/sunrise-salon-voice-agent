@@ -89,3 +89,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_booking_per_slot
     ON bookings (staff_id, starts_at) WHERE status = 'booked';
 
 CREATE INDEX IF NOT EXISTS bookings_by_phone ON bookings (business_id, customer_phone);
+
+-- Questions the agent could not answer, left for the staff to follow up.
+CREATE TABLE IF NOT EXISTS staff_messages (
+    id           SERIAL PRIMARY KEY,
+    business_id  INT  NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    call_id      INT REFERENCES calls(id) ON DELETE SET NULL,
+    caller_name  TEXT NOT NULL DEFAULT '',
+    caller_phone TEXT NOT NULL DEFAULT '',
+    message      TEXT NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -54,20 +54,27 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0) -> list:
         return caller_turns() > last_lookup["turn"]
 
     @function_tool
-    async def check_availability(service: str, date: str) -> str:
+    async def check_availability(service: str, date: str, time: str = "") -> str:
         """Free times for a service on a date. Call before offering or booking any time.
 
         Args:
             service: Service name from the business information.
             date: YYYY-MM-DD from the Dates list.
+            time: Optional. 24-hour HH:MM, if the caller asked for a particular time.
         """
         try:
             chosen = booking.find_service(business, service)
             day = booking.parse_date(date)
             free = await booking.free_slots(business, chosen, day)
             if free:
-                return (f"{chosen['name']} with {chosen['staff_name']} on {day:%A %d %B} ({day.isoformat()}): "
-                        f"free at {times_of(free)}.")
+                answer = (f"{chosen['name']} with {chosen['staff_name']} on {day:%A %d %B} ({day.isoformat()}): "
+                          f"free at {times_of(free)}.")
+                if time.strip():
+                    wanted = booking.parse_time(time)
+                    is_free = any(slot.time() == wanted for slot in free)
+                    answer = (f"{db.format_time(wanted)} is FREE. " if is_free else
+                              f"{db.format_time(wanted)} is NOT available. Offer one of the free times instead. ") + answer
+                return answer
             works_that_day = bool(booking.slots_on(business, chosen, day))
             reason = (f"{chosen['staff_name']} is fully booked or finished for the day on {day:%A %d %B}."
                       if works_that_day else
@@ -121,7 +128,11 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0) -> list:
             return str(problem)
         if not found:
             return "No upcoming bookings for that phone number."
-        return " | ".join(f"booking_id {b['booking_id']}: {b['service']} with {b['with']} on {b['when']}" for b in found)
+        hours = business["free_cancellation_hours"]
+        return " | ".join(
+            f"booking_id {b['booking_id']}: {b['service']} with {b['with']} on {b['when']} "
+            f"({'free to cancel now' if b['free_to_cancel'] else f'less than {hours} hours away, so cancelling is NOT free'})"
+            for b in found)
 
     @function_tool
     async def reschedule_booking(booking_id: int, customer_phone: str, new_date: str, new_time: str) -> str:
@@ -166,4 +177,19 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0) -> list:
         except BookingError as problem:
             return f"Not cancelled. {problem}"
 
-    return [check_availability, book_appointment, find_my_bookings, reschedule_booking, cancel_booking]
+    @function_tool
+    async def leave_message_for_staff(message: str, caller_name: str = "", caller_phone: str = "") -> str:
+        """Pass a question or request to the staff when you cannot answer it from the business
+        information. Use it only after the caller agrees.
+
+        Args:
+            message: The caller's question, in one sentence.
+            caller_name: Caller's name, if given.
+            caller_phone: Caller's phone number, if given.
+        """
+        await db.add_staff_message(business["id"], call_id, message.strip()[:500], caller_name.strip()[:100],
+                                   "".join(ch for ch in caller_phone if ch.isdigit())[-10:])
+        return "Message saved for the staff. Tell the caller the staff will get back to them."
+
+    return [check_availability, book_appointment, find_my_bookings, reschedule_booking, cancel_booking,
+            leave_message_for_staff]

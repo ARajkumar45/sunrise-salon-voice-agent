@@ -4,6 +4,7 @@
     python -m app.manage prompt sunrise-salon           show the instructions the agent gets
     python -m app.manage calls sunrise-salon            list recent calls
     python -m app.manage call 42                        show everything that happened on call 42
+    python -m app.manage messages sunrise-salon         questions callers left for the staff
 
 In Docker, put `docker compose exec web` in front, for example:
     docker compose exec web python -m app.manage calls sunrise-salon
@@ -51,6 +52,10 @@ async def main(args: list[str]) -> None:
     elif command == "call":
         for event in await db.get_call_events(int(args[1])):
             print(f"{event['at']:%H:%M:%S}  {describe_event(event)}")
+    elif command == "messages":
+        for m in await db.list_staff_messages(args[1]):
+            who = " ".join(x for x in (m["caller_name"], m["caller_phone"]) if x) or "unknown caller"
+            print(f"{m['created_at']:%d %b %H:%M}  call {m['call_id']}  {who}: {m['message']}")
     else:
         print(__doc__)
     await db.close()

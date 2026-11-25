@@ -14,6 +14,7 @@ Run in Docker: python -m app.agent start
 import asyncio
 import json
 import logging
+import os
 
 from dotenv import load_dotenv
 from livekit.agents import Agent, AgentServer, AgentSession, JobContext, JobProcess, cli, llm
@@ -32,8 +33,10 @@ AGENT_NAME = "receptionist"
 STT_MODEL = "whisper-large-v3-turbo"  # open model (OpenAI Whisper), served by Groq
 # Open-weight LLMs served by Groq, in order of preference. Groq's free tier allows each model
 # 8,000 tokens a minute, counted separately. If one is rate limited or slow, the next is used.
-LLM_MODELS = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
-MAX_REPLY_TOKENS = 300     # replies are one or two sentences; this also caps runaway answers
+LLM_MODELS = os.environ.get("LLM_MODELS", "openai/gpt-oss-120b,qwen/qwen3.8-27b,openai/gpt-oss-20b").split(",")
+# How hard the gpt-oss models think before answering: "low" is fastest, "medium" follows rules better.
+LLM_REASONING = os.environ.get("LLM_REASONING", "low")
+MAX_REPLY_TOKENS = int(os.environ.get("MAX_REPLY_TOKENS", "300"))  # also caps runaway answers
 LLM_ATTEMPT_TIMEOUT = 4.0  # seconds to wait for a model before trying the next one
 
 # How long the caller must be quiet before we treat them as finished speaking.
@@ -45,6 +48,29 @@ SILENCE_BEFORE_CHECK_IN = 15.0
 SILENCE_BETWEEN_CHECK_INS = 10.0
 CHECK_INS = ["Are you still there?", "Hello? I can't hear anything. Are you still on the line?"]
 GOODBYE = "I'll end the call for now. Please call again any time. Goodbye."
+
+
+
+def build_llm() -> llm.FallbackAdapter:
+    """The LLM, with automatic fallback to the next model on a rate limit or timeout."""
+    return llm.FallbackAdapter(
+        [groq.LLM(model=m, max_completion_tokens=MAX_REPLY_TOKENS,
+                  **({"reasoning_effort": LLM_REASONING} if "gpt-oss" in m else {}))
+         for m in LLM_MODELS],
+        attempt_timeout=LLM_ATTEMPT_TIMEOUT,
+    )
+
+
+def build_agent(business: dict, call_id: int | None, session: AgentSession) -> Agent:
+    """Instructions and tools for one call to one business. Used by live calls and by the tests."""
+
+    def caller_turns() -> int:
+        """How many times the caller has spoken so far. The tools' safety rules use this."""
+        return sum(1 for item in session.history.items
+                   if getattr(item, "type", None) == "message" and item.role == "user")
+
+    return Agent(instructions=build_instructions(business), tools=build_tools(business, call_id, caller_turns))
+
 
 server = AgentServer()
 
@@ -71,10 +97,7 @@ async def handle_call(ctx: JobContext) -> None:
 
     # 2. Build the voice pipeline.
     stt = groq.STT(model=STT_MODEL, language="en")
-    models = llm.FallbackAdapter(
-        [groq.LLM(model=m, max_completion_tokens=MAX_REPLY_TOKENS) for m in LLM_MODELS],
-        attempt_timeout=LLM_ATTEMPT_TIMEOUT,
-    )
+    models = build_llm()
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
         stt=stt,
@@ -119,8 +142,7 @@ async def handle_call(ctx: JobContext) -> None:
             silence_task = None
 
     # 5. Start talking. Instructions and greeting both come from the database.
-    agent = Agent(instructions=build_instructions(business), tools=build_tools(business, call_id, lambda: recorder.caller_lines))
-    await session.start(room=ctx.room, agent=agent)
+    await session.start(room=ctx.room, agent=build_agent(business, call_id, session))
     await session.say(business["greeting"])
 
 

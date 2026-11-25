@@ -166,9 +166,11 @@ async def bookings_for_phone(business: dict, customer_phone: str, now: dt.dateti
                FROM bookings b JOIN services s ON s.id = b.service_id JOIN staff st ON st.id = b.staff_id
                WHERE b.business_id = %s AND b.customer_phone = %s AND b.status = 'booked' AND b.starts_at > %s
                ORDER BY b.starts_at""",
-            (business["id"], clean_phone(customer_phone), now or now_at(business)))
+            (business["id"], clean_phone(customer_phone), now := now or now_at(business)))
+        free_notice = dt.timedelta(hours=business["free_cancellation_hours"])
         return [{"booking_id": r["id"], "service": r["service"], "with": r["staff_name"],
-                 "when": say_slot(r["starts_at"].astimezone(zone))} for r in await cur.fetchall()]
+                 "when": say_slot(r["starts_at"].astimezone(zone)),
+                 "free_to_cancel": r["starts_at"] - now >= free_notice} for r in await cur.fetchall()]
 
 
 async def get_own_booking(conn, business: dict, booking_id: int, customer_phone: str) -> dict:

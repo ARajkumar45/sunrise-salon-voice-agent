@@ -44,7 +44,7 @@ async def database():
 async def salon(database) -> dict:
     """Sunrise Salon with no bookings."""
     async with (await db.pool()).connection() as conn:
-        await conn.execute("TRUNCATE bookings RESTART IDENTITY")
+        await conn.execute("TRUNCATE bookings, staff_messages RESTART IDENTITY")
     return await db.load_business("sunrise-salon")
 
 

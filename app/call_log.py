@@ -40,7 +40,6 @@ class CallRecorder:
         self.stt_seconds: float | None = None          # time Whisper took for the last utterance
         self.transcript_at: float | None = None        # when the caller's words arrived as text
         self.used_tool = False
-        self.caller_lines = 0                          # how many times the caller has spoken
         self.prompt_tokens: int | None = None          # size of the last request to the LLM
 
         session.on("user_state_changed", self.on_user_state)
@@ -96,8 +95,6 @@ class CallRecorder:
         if getattr(item, "type", None) != "message" or item.role not in ("user", "assistant"):
             return
         metrics = dict(item.metrics or {})
-        if item.role == "user":
-            self.caller_lines += 1
         self.write("said", {"who": "caller" if item.role == "user" else "agent",
                             "text": item.text_content, "interrupted": item.interrupted})
         if item.role == "assistant" and self.reply_latency is not None:

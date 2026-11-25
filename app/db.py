@@ -170,6 +170,24 @@ async def log_event(call_id: int, kind: str, data: dict) -> None:
             (call_id, kind, json.dumps(data, default=str)))
 
 
+async def add_staff_message(business_id: int, call_id: int | None, message: str,
+                            caller_name: str = "", caller_phone: str = "") -> None:
+    async with (await pool()).connection() as conn:
+        await conn.execute(
+            """INSERT INTO staff_messages (business_id, call_id, caller_name, caller_phone, message)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (business_id, call_id, caller_name, caller_phone, message))
+
+
+async def list_staff_messages(slug: str, limit: int = 20) -> list[dict]:
+    async with (await pool()).connection() as conn:
+        cur = await conn.execute(
+            """SELECT m.created_at, m.caller_name, m.caller_phone, m.message, m.call_id
+               FROM staff_messages m JOIN businesses b ON b.id = m.business_id
+               WHERE b.slug = %s ORDER BY m.id DESC LIMIT %s""", (slug, limit))
+        return await cur.fetchall()
+
+
 async def list_calls(slug: str, limit: int = 20) -> list[dict]:
     async with (await pool()).connection() as conn:
         cur = await conn.execute(
