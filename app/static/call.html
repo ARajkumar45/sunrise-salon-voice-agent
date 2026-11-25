@@ -21,7 +21,7 @@
 <body>
 <main>
   <h1 id="title">Voice receptionist</h1>
-  <p>Press Call and talk. Allow the microphone when your browser asks.</p>
+  <p>Press Call to talk to our voice receptionist. Allow the microphone when your browser asks.</p>
   <button id="call">Call</button>
   <div id="status"></div>
   <div id="timing"></div>
@@ -37,6 +37,14 @@
   let room = null;
 
   const setStatus = (text) => { statusBox.textContent = text; };
+
+  // Show the business name. An unknown business gets a clear message and no Call button.
+  fetch("/api/business/" + encodeURIComponent(business)).then(async (response) => {
+    if (!response.ok) { button.hidden = true; setStatus("This call page does not exist."); return; }
+    const { name } = await response.json();
+    document.getElementById("title").textContent = name;
+    document.title = "Call " + name;
+  });
 
   async function startCall() {
     const pressedAt = performance.now();

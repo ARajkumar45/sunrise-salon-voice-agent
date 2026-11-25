@@ -1,0 +1,49 @@
+# Everything the agent knows about Sunrise Salon. Load it with:
+#   python -m app.manage load data/sunrise-salon.yaml
+# Changing a value here and loading again updates the business. The next call uses it.
+
+slug: sunrise-salon
+name: Sunrise Salon
+timezone: Asia/Kolkata
+address: 12 Lake Road, Indiranagar, Bengaluru
+slot_minutes: 30
+staff_word: stylist
+greeting: Hello, thank you for calling Sunrise Salon. How can I help you today?
+free_cancellation_hours: 2
+
+staff:
+  - name: Anita Rao
+    does: Haircuts and styling
+    days: [mon, tue, wed, thu, fri, sat]
+    hours: 10:00-14:00
+  - name: Rahul Shetty
+    does: Hair colour and hair spa
+    days: [tue, thu, sat]
+    hours: 16:00-20:00
+  - name: Kavya Nair
+    does: Facials and clean-ups
+    days: [mon, wed, fri]
+    hours: 09:00-13:00
+
+services:
+  - { name: Haircut (women),      staff: Anita Rao,    price: "Rs 600" }
+  - { name: Haircut (men),        staff: Anita Rao,    price: "Rs 400" }
+  - { name: Blow dry and styling, staff: Anita Rao,    price: "Rs 500" }
+  - { name: Hair colour,          staff: Rahul Shetty, price: "From Rs 2,500, depends on hair length" }
+  - { name: Hair spa,             staff: Rahul Shetty, price: "Rs 1,200" }
+  - { name: Facial,               staff: Kavya Nair,   price: "Rs 1,500" }
+  - { name: Clean-up,             staff: Kavya Nair,   price: "Rs 800" }
+
+not_offered: [nail art, waxing, makeup, tattoos, home service]
+
+notes:
+  - Closed on Sundays.
+  - One booking per 30 minute slot.
+  - There is no membership or package information on file.
+
+faqs:
+  - { topic: Payment,      answer: "Cash, UPI and cards are accepted." }
+  - { topic: Walk-ins,     answer: "Walk-ins are welcome, but customers with a booking are served first." }
+  - { topic: Parking,      answer: "Street parking only." }
+  - { topic: Late arrival, answer: "If you are more than 15 minutes late, the booking may be moved to the next free slot." }
+  - { topic: Discounts,    answer: "There are no discounts right now." }
