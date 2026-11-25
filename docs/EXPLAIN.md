@@ -335,3 +335,85 @@ Result on the VM: **32 passed**.
 > "The LLM never decides whether a slot is free. It asks a tool, the tool asks the database.
 > And it cannot change a booking before the caller has heard the details and answered: that
 > rule is in code, in build_tools, not just in the prompt."
+
+---
+
+## Milestone 3: answers and safety (Thu 26 Nov, early morning). NOT fully proven yet
+
+### What was built
+- `tests/test_conversations.py`: 24 simulated conversations. Each one types what a caller would
+  say into the real agent brain (same instructions, same tools, same Groq models as a live
+  call; only the audio is missing) and checks the reply and the database.
+  - 15 are the assignment's own test questions, named `test_q01` to `test_q15`.
+  - 9 more cover a full booking with "next Monday", "tomorrow", a taken slot, cancelling,
+    trying to cancel someone else's booking, two more prompt tricks, and passing a question
+    to staff.
+- `leave_message_for_staff` tool and `staff_messages` table: when the agent does not know
+  (for example, membership plans), it offers to pass the question on, and saves it.
+  Read them with `python -m app.manage messages sunrise-salon`.
+- `check_availability` takes an optional time and answers "11 AM is NOT available" in so
+  many words, after the LLM once described a taken slot as available.
+- `find_my_bookings` now says whether cancelling each booking would be free.
+- `app/agent.py`: `build_agent` and `build_llm` are shared by live calls and tests, so the
+  tests exercise exactly what callers get.
+
+### Why the agent answers only from the business's data
+Three layers, strongest first:
+1. **It cannot see what it must not say.** No tool returns another customer's name or number.
+   Availability lists free times only. Staff phone numbers are not in the database at all.
+   A trick prompt cannot extract data the model never receives.
+2. **Tools are tied to one business and one phone number.** See Milestone 2.
+3. **Instructions** (`RULES` in `app/prompt.py`): answer only from the business information,
+   say so when it is not there and offer to pass it to staff, never give an exact price for
+   a "from" price, refuse customer details whoever the caller claims to be, decline anything
+   that is not reception work.
+
+Layer 3 is the weak one: it depends on the LLM obeying. Layers 1 and 2 hold even if it does not.
+
+### Model setting changed (approved by Raj)
+The plan had gpt-oss-120b at its fastest reasoning setting, then Qwen, then gpt-oss-20b.
+Testing showed:
+- At the fastest setting, gpt-oss-120b skipped rules: it asked "which time?" for a Tuesday
+  facial without checking, left out cash and cards for the UPI question, and once called a
+  taken slot available.
+- Qwen claimed "I found your appointment" without calling any tool.
+
+Now: `openai/gpt-oss-120b` with `medium` reasoning, then `openai/gpt-oss-20b`, then Qwen last.
+Cost: about 0.3 s more per reply. Both are settings (`LLM_MODELS`, `LLM_REASONING`).
+
+### What has and has not been proven
+- First full run (fastest setting): 17 of 24 passed.
+- With medium reasoning, every conversation that had failed passed when run in small groups:
+  facial on Tuesday, UPI, the 11:00 slot question, cancel, taken slot.
+- **A clean full run of all 24 on the final settings has NOT happened.** The attempt ran out of
+  Groq quota part way (see below), so 12 tests failed with "all LLMs failed", not wrong answers.
+- No run, on any model or setting, revealed another customer's details or double booked.
+
+### The daily token limit (the biggest open risk)
+Groq's free tier gives each model 200,000 tokens per day. One reply costs about 1,500 to
+2,700 tokens (instructions, tool descriptions, conversation so far, and with medium reasoning
+the model's hidden thinking). Wednesday night's testing used the whole day's allowance for
+gpt-oss-120b. Until it refills (it is a rolling 24 hours), live calls run on gpt-oss-20b.
+
+What that means in practice: roughly 100 replies a day on the best model, so a handful of
+booking calls. Cached prompt tokens are not discounted (checked). Options are in the README's
+limits section once decided: add another free provider of the same open models as extra
+fallback, shrink requests further, and avoid running the conversation tests more than needed.
+
+### Honest notes
+- gpt-oss-20b (the current fallback) is good at the booking flow but less polished: it once
+  answered the UPI question with stray words from its instructions. That line was removed.
+- "Who has the 11:00 slot?" is always safe (no data to leak) but the wording varies: sometimes
+  a clear "I can't share customer details", sometimes just whether the slot is free.
+- The tests check replies by keywords, not by a human or a judge model. I read every
+  transcript in these runs; the keyword checks agreed with my reading.
+
+### How to explain this on the review call
+> "The agent can't leak another customer's details because it never has them. No tool returns
+> a customer name, availability lists only free times, and a booking can only be fetched with
+> the phone number it was made with. The prompt also tells it to refuse, but I don't rely on
+> the prompt for anything that matters."
+
+> "I test with simulated conversations that run the real instructions, tools and models, one
+> per test question from the brief. They showed me the fastest model setting was skipping
+> rules, so I traded about 0.3 seconds of latency for a setting that follows them."

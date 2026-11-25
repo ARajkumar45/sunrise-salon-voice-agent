@@ -31,12 +31,14 @@ log = logging.getLogger("receptionist")
 
 AGENT_NAME = "receptionist"
 STT_MODEL = "whisper-large-v3-turbo"  # open model (OpenAI Whisper), served by Groq
-# Open-weight LLMs served by Groq, in order of preference. Groq's free tier allows each model
+# Open-weight LLMs served by Groq, in order of preference. In our simulated conversations
+# gpt-oss-120b with "medium" reasoning followed the rules best; Qwen was the least reliable
+# (it once claimed a booking it never looked up), so it is the last resort. Groq's free tier allows each model
 # 8,000 tokens a minute, counted separately. If one is rate limited or slow, the next is used.
-LLM_MODELS = os.environ.get("LLM_MODELS", "openai/gpt-oss-120b,qwen/qwen3.8-27b,openai/gpt-oss-20b").split(",")
+LLM_MODELS = os.environ.get("LLM_MODELS", "openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b").split(",")
 # How hard the gpt-oss models think before answering: "low" is fastest, "medium" follows rules better.
-LLM_REASONING = os.environ.get("LLM_REASONING", "low")
-MAX_REPLY_TOKENS = int(os.environ.get("MAX_REPLY_TOKENS", "300"))  # also caps runaway answers
+LLM_REASONING = os.environ.get("LLM_REASONING", "medium")
+MAX_REPLY_TOKENS = int(os.environ.get("MAX_REPLY_TOKENS", "700"))  # includes the model's hidden reasoning
 LLM_ATTEMPT_TIMEOUT = 4.0  # seconds to wait for a model before trying the next one
 
 # How long the caller must be quiet before we treat them as finished speaking.

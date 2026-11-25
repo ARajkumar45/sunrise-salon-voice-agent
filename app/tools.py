@@ -69,7 +69,7 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0) -> list:
             if free:
                 answer = (f"{chosen['name']} with {chosen['staff_name']} on {day:%A %d %B} ({day.isoformat()}): "
                           f"free at {times_of(free)}.")
-                if time.strip():
+                if time and time.strip():
                     wanted = booking.parse_time(time)
                     is_free = any(slot.time() == wanted for slot in free)
                     answer = (f"{db.format_time(wanted)} is FREE. " if is_free else
