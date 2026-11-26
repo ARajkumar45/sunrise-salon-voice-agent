@@ -1,0 +1,18 @@
+### CLEAN CLONE
+cloned commit: 735aca0 Cerebras first by default; ports and agent name configurable; no business-specific wording in code
+docker compose up exit code: 0
+seconds from 'docker compose up' to healthy web: 9
+agent running;caddy running;db running;tts running;web running;
+call page: 200  businesses seeded: {"name":"Sunrise Salon"} {"name":"Greenline Auto Care"}  root redirects to: http://localhost:8100/call/greenline-auto-care
+greeting heard 1.52s after pressing Call
+mens_haircut.wav: reply heard 1.83s after the question ended
+sunday.wav: reply heard 1.33s after the question ended
+15:00:23  AGENT : Hello, thank you for calling Sunrise Salon. How can I help you today?
+15:00:27  CALLER: How much is a haircut for men?
+15:00:31  AGENT : A men’s haircut is Rs 400 with Anita Rao.
+15:00:31    (reply started 1.146s after end of speech was detected, 1.626s after the caller's last word: stt 0.278s, llm 0.645s, tts 0.207s)
+15:00:34  CALLER: Are you open on Sunday?
+15:00:39  AGENT : We’re closed on Sundays. Let me know if you’d like anything else.
+15:00:39    (reply started 0.747s after end of speech was detected, 1.228s after the caller's last word: stt 0.226s, llm 0.436s, tts 0.077s)
+42 passed, 25 deselected in 3.66s
+clean stack removed; live stack: agent running;caddy running;db running;tts running;web running;

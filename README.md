@@ -16,8 +16,10 @@ Built for the PorsAI Forward Deployed Engineer take-home by Raj Kumar.
 | Raw measurement outputs | [docs/measurements/](docs/measurements/) |
 | Demo video | *(link to be added)* |
 
-**Status: work in progress until Friday's final review.** Sections marked *(pending)* are not
-finished. What does not work is listed under [Known gaps](#known-gaps-and-limits).
+Every number below comes from a real run against the deployed agent; the raw outputs are in
+`docs/measurements/` and `docs/test-results.txt`. What does not work is listed under
+[Known gaps](#known-gaps-and-limits). A line-by-line check against the assignment is in
+[docs/REQUIREMENTS_CHECK.md](docs/REQUIREMENTS_CHECK.md).
 
 ---
 
@@ -86,8 +88,12 @@ docker compose up --build
 Open http://localhost:8000 and press **Call**. The database tables are created and both demo
 businesses are loaded on first start.
 
-*(pending: `docker compose up` from a fresh clone on a second machine has not been verified yet.
-It is how the live server runs.)*
+Verified from a fresh `git clone` on the server (as a second, separate stack on other ports):
+all five containers started, both businesses were seeded, a scripted voice call was answered
+correctly, and the 42 non-LLM tests passed. Output: `docs/measurements/clean_clone_test.txt`.
+With images already built, the stack was healthy 9 seconds after `docker compose up`; the first
+build downloads about 3 GB of images and takes several minutes. Not verified on a second
+physical machine or on Windows.
 
 Useful commands (put `docker compose exec web` in front):
 
@@ -155,27 +161,28 @@ a booking, a cancellation), made by a scripted caller:
 
 | | Median | p95 | Target |
 |---|---|---|---|
-| **Cerebras first, then Groq** | **1.03 s** | **1.64 s** | 1.2 s / 2.0 s |
-| Groq free tier first, then Cerebras | 1.43 s | 2.57 s | 1.2 s / 2.0 s |
+| **Live configuration: Cerebras first, then Groq (final run)** | **1.01 s** | **1.49 s** | 1.2 s / 2.0 s |
+| Same configuration, an earlier run | 1.03 s | 1.64 s | |
+| Groq free tier first, then Cerebras | 1.43 s | 2.57 s | |
 
-Breakdown, Cerebras first:
+Breakdown of the final run:
 
 | | n | Median | p95 |
 |---|---|---|---|
-| Replies that used a tool | 9 | 1.49 s | 1.87 s |
-| Replies without a tool | 13 | 0.90 s | 1.19 s |
+| Replies that used a tool | 9 | 1.30 s | 1.76 s |
+| Replies without a tool | 13 | 0.92 s | 1.03 s |
 | Stage: speech to text (Whisper) | 22 | 0.24 s | 0.31 s |
-| Stage: LLM, time to first token | 20 | 0.43 s | 0.59 s |
-| Stage: text to speech, first audio | 22 | 0.24 s | 0.35 s |
+| Stage: LLM, time to first token | 20 | 0.43 s | 0.48 s |
+| Stage: text to speech, first audio | 22 | 0.21 s | 0.35 s |
 
 The stages do not add up to the total: a tool reply makes two LLM requests, and the first
 sentence must be complete before Piper speaks it. Two replies have no LLM time because the
 code spoke them directly (the booking read-back).
 
 As the caller feels it, from their last word (adds the 0.45 s the voice detector waits to be
-sure they have finished): median 1.51 s, p95 2.12 s.
+sure they have finished): median 1.49 s, p95 1.97 s.
 
-*(pending: which order the live agent runs is being decided; this section will say which.)*
+The live agent runs Cerebras first. On Groq's free tier alone the targets are missed.
 
 Reproduce on the server: `sh scripts/measure_latency.sh`.
 
@@ -199,6 +206,7 @@ Each scripted caller asks five questions, one of which needs a tool.
 | 3 | Cerebras first | 15 of 15 | 0 | 1.07 s | 3.63 s |
 | 5 | Cerebras first | 25 of 25 | 0 | 1.22 s | 2.77 s |
 | 8 | Cerebras first | 40 of 40 | 79 | 3.11 s | 15.1 s |
+| 3 | Cerebras first, final run | 15 of 15 | 0 | 1.09 s | 2.19 s |
 
 - No call failed and no reply was lost at any level.
 - Up to 5 calls the median holds, but **p95 goes above the 2.0 s target under load**.
@@ -247,8 +255,8 @@ Tests use a separate throwaway database, never the live one.
 | `tests/test_isolation.py` | One business cannot see or change another's data | 7 |
 | `tests/test_conversations.py` | Simulated conversations with the real instructions, tools and model: the brief's 15 test questions, a full booking with "next Monday", "tomorrow", a taken slot, cancel, attempts to cancel someone else's booking, prompt tricks, a staff message, the second business | 25 |
 
-Last complete run: **59 passed** (before the 7 isolation tests and 1 conversation were added;
-those 8 pass on their own). *(pending: final complete run on Friday.)*
+Last complete run, on the deployed server: **67 passed, 0 failed** (42 without an LLM, 25
+simulated conversations). Full list: [docs/test-results.txt](docs/test-results.txt).
 
 The simulated conversations call a hosted LLM, so they use tokens (about 100,000 per run) and
 their wording varies between runs. They check replies by keywords.
@@ -327,8 +335,11 @@ What would change, in order:
   12:30 PM. Bookings themselves are protected by code; sentences are not.
 - **Phone numbers are heard, not typed.** Speech to text sometimes drops a digit. The
   read-back is the defence. A phone number identifies a caller; it does not authenticate them.
-- **Voice testing so far is mostly a scripted caller with a synthetic voice.** *(pending:
-  human voice checks, including echo on laptop speakers.)*
+- **Voice testing is by a scripted caller with a synthetic voice, plus a real Chrome browser
+  test.** The Chrome test (`scripts/browser_call_test.mjs`) proves the page loads, connects,
+  publishes the microphone and plays the agent's voice, but its fake microphone could not play
+  a recording, so the caller-to-agent direction is proven only by the scripted caller.
+  *(pending: human voice checks, including echo on laptop speakers.)*
 - **English only.** One Piper voice, an American accent.
 - **Tenant isolation is enforced in application queries**, not by database row-level security.
 - **The owner page uses one shared key** for all businesses.
@@ -337,6 +348,8 @@ What would change, in order:
 - **No test covers a business in a second timezone**, though all time handling uses the
   business's own timezone.
 - **The simulated conversations check keywords**, and their results vary slightly run to run.
+- **Dates more than 10 days ahead** are not in the list the agent is given, so it has to work
+  the date out itself. The booking tool still checks the date against real working days.
 - **The live demo depends on trial credit** (Oracle VM, Cerebras) that ends in late December 2026.
 - **Extras not built:** staff login and dashboard, analytics page, uploaded documents, human
   handoff by email, embeddable widget, phone number over SIP, other languages, calendar sync,

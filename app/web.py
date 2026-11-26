@@ -40,8 +40,8 @@ app.include_router(admin_router)
 
 @app.get("/")
 async def home() -> RedirectResponse:
-    """The bare address goes to the first business's call page."""
-    slug = await db.first_business_slug()
+    """The bare address goes to the DEFAULT_BUSINESS call page, or the first business if unset."""
+    slug = os.environ.get("DEFAULT_BUSINESS") or await db.first_business_slug()
     if slug is None:
         raise HTTPException(404, "No business has been set up yet")
     return RedirectResponse(f"/call/{slug}")

@@ -74,7 +74,8 @@
       await room.localParticipant.setMicrophoneEnabled(true, {
         echoCancellation: true, noiseSuppression: true, autoGainControl: true,
       });
-      setStatus("Waiting for the receptionist...");
+      // The agent's audio may already have arrived while the microphone was being set up.
+      if (!statusBox.textContent.startsWith("Connected")) setStatus("Waiting for the receptionist...");
       button.textContent = "Hang up";
       button.classList.add("live");
     } catch (error) {

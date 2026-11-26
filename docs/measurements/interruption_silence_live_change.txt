@@ -1,0 +1,21 @@
+### INTERRUPTION (3 runs)
+agent went quiet 0.46s after the caller started talking over it
+agent went quiet 0.52s after the caller started talking over it
+agent went quiet 0.47s after the caller started talking over it
+interruption: agent stopped 0.215s after caller speech was detected
+interruption: agent stopped 0.214s after caller speech was detected
+interruption: agent stopped 0.215s after caller speech was detected
+### SILENCE
+agent spoke after 14.2s of caller silence
+agent spoke after 25.6s of caller silence
+agent spoke after 38.7s of caller silence
+agent ended the call after 44.6s of caller silence
+### LIVE CHANGE through the owner page (Greenline oil change Rs 1,800 -> Rs 1,950)
+save response: Saved. The next call will use the new details.  (20 ms)
+17:01:23  AGENT : Hello, Greenline Auto Care. How can I help with your car today?
+17:01:28  CALLER: How much does an oil change, and who does it?
+17:01:33  AGENT : Oil change is Rs 1,950 and Imran Sheikh handles it.
+bad edit is refused: {"detail":"Service 'X' names a staff member who is not in the staff list."}
+restore response: Saved. The next call will use the new details.
+price now:   price: Rs 1,800
+wrong key: 403

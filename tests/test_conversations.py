@@ -266,7 +266,12 @@ async def test_a_taken_slot_is_not_offered_or_booked(salon):
     async with Call(salon) as call:
         reply = await call.say(f"I want a men's haircut on {day:%A %d %B} at 11 AM.")
         assert "check_availability" in reply.tools
-        assert reply.has("taken", "not available", "isn't available", "unavailable", "booked", "not free", "isn't free")
+        # Either it says 11 is taken, or it simply offers the times that are free. What it must
+        # never do is offer 11 AM itself.
+        says_taken = reply.has("taken", "not available", "isn't available", "unavailable", "booked", "not free", "isn't free")
+        offers_others = reply.has("10:30") and reply.has("11:30")
+        offers_eleven = re.search(r"\b11(:00)? ?(am|a\.m\.)", reply.low) and not says_taken
+        assert (says_taken or offers_others) and not offers_eleven
         assert reveals_nothing(reply)
     assert await count_bookings() == 1                     # only the other customer's
 

@@ -4,7 +4,7 @@
 # It makes seven real voice calls with a scripted caller (22+ caller turns: plain questions,
 # availability checks, a booking, a cancellation), then prints the report from the call logs.
 # The numbers come from the agent's own clock, recorded per reply in the database.
-set -e
+# No 'set -e': if one scripted call crashes, the others still run and the report is still printed.
 A=tests/audio
 CALLER="docker compose --profile test run --rm -T -v $PWD/tests/audio:/srv/tests/audio:ro tests python scripts/fake_caller.py ask"
 FIRST=$(docker compose exec -T db sh -c 'psql -t -A -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT COALESCE(MAX(id),0)+1 FROM calls"')
