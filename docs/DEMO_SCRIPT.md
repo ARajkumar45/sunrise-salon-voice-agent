@@ -15,6 +15,6 @@ link access on. Rehearse once; if a take goes wrong, say so and carry on rather 
 | 3:10 | Owner page, Recent calls | Open the booking call: point at the transcript, the tool calls and the latency line. |
 | 3:35 | Owner page, details | Change a price, press Save, call again and ask for that price. Change it back. |
 | 4:10 | The second business page, /call/greenline-auto-care | One question: "How much is an oil change?" Say it was added with one data file in 16 seconds. |
-| 4:30 | README latency table | "Median 1.0 second, p95 1.5 over 22 replies. Known gaps are listed in the README, including that the main model runs on Cerebras credit rather than a free tier." |
+| 4:30 | README latency table | "Median 1.0 second, p95 1.8 over 66 replies. Known gaps are listed in the README, including that the main model runs on Cerebras credit rather than a free tier." |
 
 Before recording: make sure no test booking is sitting on the slot you plan to book.

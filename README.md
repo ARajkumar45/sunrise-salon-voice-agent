@@ -152,39 +152,48 @@ says goodbye and ends the call.
 
 ## Latency
 
-Measured in the agent for every reply: the clock starts when the voice detector decides the
-caller has finished speaking and stops when the first audio of the reply is sent. Every reply
-is counted, including replies that call tools.
+Measured in the agent for every reply, exactly as the assignment defines it: the clock starts
+when the voice detector decides the caller has finished speaking and stops when the first audio
+of the reply is sent. Every reply is counted, including replies that call tools.
 
-22 replies over 7 real voice calls to the deployed agent (plain questions, availability checks,
-a booking, a cancellation), made by a scripted caller:
+**66 replies over 21 real voice calls** to the deployed agent (plain questions, availability
+checks, bookings, cancellations; 27 replies used a tool), made by a scripted caller in one
+continuous run with no rate-limit errors:
 
-| | Median | p95 | Target |
-|---|---|---|---|
-| **Live configuration: Cerebras first, then Groq (final run)** | **1.01 s** | **1.49 s** | 1.2 s / 2.0 s |
-| Same configuration, an earlier run | 1.03 s | 1.64 s | |
-| Groq free tier first, then Cerebras | 1.43 s | 2.57 s | |
+| | Median | p95 | Worst | Target |
+|---|---|---|---|---|
+| **All 66 replies** | **1.04 s** | **1.79 s** | 2.08 s | 1.2 s / 2.0 s |
+| Replies that used a tool (27) | 1.42 s | 1.82 s | 2.08 s | |
+| Replies without a tool (39) | 0.91 s | 1.28 s | 1.45 s | |
 
-Breakdown of the final run:
-
-| | n | Median | p95 |
-|---|---|---|---|
-| Replies that used a tool | 9 | 1.30 s | 1.76 s |
-| Replies without a tool | 13 | 0.92 s | 1.03 s |
-| Stage: speech to text (Whisper) | 22 | 0.24 s | 0.31 s |
-| Stage: LLM, time to first token | 20 | 0.43 s | 0.48 s |
-| Stage: text to speech, first audio | 22 | 0.21 s | 0.35 s |
+| Stage | Median | p95 |
+|---|---|---|
+| Speech to text (Whisper) | 0.26 s | 0.36 s |
+| LLM, time to first token | 0.43 s | 0.56 s |
+| Text to speech, first audio | 0.20 s | 0.52 s |
 
 The stages do not add up to the total: a tool reply makes two LLM requests, and the first
-sentence must be complete before Piper speaks it. Two replies have no LLM time because the
-code spoke them directly (the booking read-back).
+sentence must be complete before Piper speaks it.
 
-As the caller feels it, from their last word (adds the 0.45 s the voice detector waits to be
-sure they have finished): median 1.49 s, p95 1.97 s.
+**The same replies measured the way the industry usually measures**, which starts the clock
+earlier, at the caller's last word:
 
-The live agent runs Cerebras first. On Groq's free tier alone the targets are missed.
+| | Median | p95 |
+|---|---|---|
+| From the caller's last word to first audio sent (adds the 0.45 s end-of-speech wait) | 1.52 s | 2.27 s |
+| As heard at the caller's end (the scripted caller's own clock) | 1.73 s | 2.37 s |
 
-Reproduce on the server: `sh scripts/measure_latency.sh`.
+By that measure the agent is typical of production voice pipelines and slower than the
+published targets (for example 1.5 s from Daily and Pipecat, 1.1 s from Twilio). Sources and a
+fuller comparison, including human conversation timing, are in [docs/RESEARCH.md](docs/RESEARCH.md).
+
+Why 66 and not 20: a 95th percentile needs at least 59 samples to be meaningful. Earlier
+22-reply runs gave a p95 of 1.49 s and 1.64 s; the larger run's 1.79 s is the one to trust.
+
+This is with the live configuration (Cerebras first). On Groq's free tier alone a 22-reply run
+gave a median of 1.43 s and a p95 of 2.57 s, which misses the targets.
+
+Reproduce on the server: `sh scripts/measure_latency.sh` (one round, 22 replies).
 
 **Interruption:** the agent stops 0.22 to 0.26 s after the caller starts speaking (3 runs, the
 agent's clock); about 0.5 s as heard at the caller's end, including network and audio already

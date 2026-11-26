@@ -21,8 +21,10 @@ Here is my submission for the Forward Deployed Engineer take-home.
 What it is: LiveKit Agents with Silero VAD, Whisper for speech to text, gpt-oss-120b as the
 LLM and Piper for text to speech, with Postgres. `docker compose up` runs everything.
 
-Measured on the deployed agent, over 22 replies including the ones that call tools: median
-1.01 s and 95th percentile 1.49 s from end of speech detected to first audio sent. 67 automated
+Measured on the deployed agent, over 66 replies including the ones that call tools: median
+1.04 s and 95th percentile 1.79 s from end of speech detected to first audio sent. Measured the
+way the industry usually does, from the caller's last word to audio heard, the median is 1.73 s;
+the README and docs/RESEARCH.md set that against published figures. 67 automated
 tests pass, including 25 simulated conversations (your 15 test questions among them) and a
 test that fires 50 simultaneous bookings at one slot.
 

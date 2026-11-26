@@ -20,10 +20,10 @@ Status words: **Done** (run and proven), **Partial** (works with a stated limit)
 | Opens the call page, presses Call, talks from the browser | **Done**, same limit as above | Chrome test above. The page is one HTML file, `app/static/call.html`. |
 | Stops talking within half a second when interrupted | **Done**, at the limit | Agent's own clock: stopped 0.214, 0.215, 0.215 s after the caller began speaking. Heard at the caller's end: 0.46, 0.47, 0.52 s (one of three just over). `docs/measurements/interruption_silence_live_change.txt` |
 | Handles long silence politely | **Done** | Check-in at 14 s and 26 s, goodbye at 39 s, call ended at 45 s. Same file. |
-| Reply starts within 1.2 s median | **Done** | 1.01 s over 22 replies. `docs/measurements/final_latency.txt` |
-| Reply starts within 2.0 s at the 95th percentile | **Done** for single calls, **Partial** under load | 1.49 s over 22 replies. With 3 calls at once p95 was 2.19 s. |
+| Reply starts within 1.2 s median | **Done** | 1.04 s over 66 replies. `docs/measurements/final_latency_66_replies.txt` |
+| Reply starts within 2.0 s at the 95th percentile | **Done** for single calls, **Partial** under load | 1.79 s over 66 replies (one reply of 66 took 2.08 s). With 3 calls at once p95 was 2.19 s. |
 | Measured from "system detects caller stopped speaking" to "first audio byte sent" | **Done** | `app/call_log.py` starts the clock when the voice detector reports end of speech and stops it when the reply's first audio is sent. |
-| At least 20 turns; median, p95, time for each stage | **Done** | 22 replies. Stages: Whisper 0.24 s, LLM first token 0.43 s, Piper first audio 0.21 s (medians). Tool replies are included in the headline numbers. |
+| At least 20 turns; median, p95, time for each stage | **Done** | 66 replies. Stages: Whisper 0.26 s, LLM first token 0.43 s, Piper first audio 0.20 s (medians). Tool replies are included in the headline numbers. Comparison with published figures: `docs/RESEARCH.md`. |
 | Many calls at the same time on one deployment | **Partial** | 3 and 5 at once: every question answered, no failed reply. 8 at once: all answered but slow (median 3.1 s), limited by the free speech-to-text tier. README, "Several calls at once". |
 
 ## Bookings (20%)

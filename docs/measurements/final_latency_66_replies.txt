@@ -1,0 +1,16 @@
+===== COMBINED: 3 rounds, calls from id 104 =====
+Reply latency over 66 replies in 21 calls
+ALL REPLIES (headline)             n=66  median 1.04s   p95 1.79s   worst 2.08s
+  replies that used a tool         n=27  median 1.42s   p95 1.82s   worst 2.08s
+  replies without a tool           n=39  median 0.91s   p95 1.28s   worst 1.45s
+Stages (all replies):
+  speech to text (Whisper)         n=66  median 0.26s   p95 0.36s   worst 0.41s
+  LLM, time to first token         n=60  median 0.43s   p95 0.56s   worst 0.74s
+  text to speech, first audio      n=66  median 0.20s   p95 0.52s   worst 0.72s
+As the caller feels it (from last word) n=66  median 1.52s   p95 2.27s   worst 2.56s
+===== AS HEARD AT THE CALLER'S END (scripted caller's own clock, from the end of its recording to the first reply audio it received) =====
+n=66  median 1.73s  p95 2.37s  worst 2.75s
+rate-limit errors during these rounds: 0
+crashed scripted calls: 6
+questions answered: 66
+
