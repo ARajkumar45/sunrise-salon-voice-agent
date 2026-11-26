@@ -338,7 +338,7 @@ Result on the VM: **32 passed**.
 
 ---
 
-## Milestone 3: answers and safety (Thu 26 Nov, early morning). NOT fully proven yet
+## Milestone 3: answers and safety (Thu 26 Nov)
 
 ### What was built
 - `tests/test_conversations.py`: 24 simulated conversations. Each one types what a caller would
@@ -381,24 +381,45 @@ Testing showed:
 Now: `openai/gpt-oss-120b` with `medium` reasoning, then `openai/gpt-oss-20b`, then Qwen last.
 Cost: about 0.3 s more per reply. Both are settings (`LLM_MODELS`, `LLM_REASONING`).
 
-### What has and has not been proven
-- First full run (fastest setting): 17 of 24 passed.
-- With medium reasoning, every conversation that had failed passed when run in small groups:
-  facial on Tuesday, UPI, the 11:00 slot question, cancel, taken slot.
-- **A clean full run of all 24 on the final settings has NOT happened.** The attempt ran out of
-  Groq quota part way (see below), so 12 tests failed with "all LLMs failed", not wrong answers.
-- No run, on any model or setting, revealed another customer's details or double booked.
-
-### The daily token limit (the biggest open risk)
+### Second provider for the same model: Cerebras (approved by Raj)
 Groq's free tier gives each model 200,000 tokens per day. One reply costs about 1,500 to
-2,700 tokens (instructions, tool descriptions, conversation so far, and with medium reasoning
-the model's hidden thinking). Wednesday night's testing used the whole day's allowance for
-gpt-oss-120b. Until it refills (it is a rolling 24 hours), live calls run on gpt-oss-20b.
+2,700 tokens, so the best model serves roughly 100 replies a day. Wednesday night's testing
+used all of it. Cached prompt tokens are not discounted (checked).
 
-What that means in practice: roughly 100 replies a day on the best model, so a handful of
-booking calls. Cached prompt tokens are not discounted (checked). Options are in the README's
-limits section once decided: add another free provider of the same open models as extra
-fallback, shrink requests further, and avoid running the conversation tests more than needed.
+Cerebras serves the same open model, `gpt-oss-120b`. `build_llm` in `app/agent.py` now reads a
+list of `provider:model` entries and tries them in order:
+`groq:openai/gpt-oss-120b`, `cerebras:gpt-oss-120b`, `groq:openai/gpt-oss-20b`, `groq:qwen/qwen3.8-27b`.
+Without a `CEREBRAS_API_KEY` the Cerebras entry is skipped, so the project still runs on Groq alone.
+
+Measured from the VM with the real prompt, medium reasoning, time to first spoken token:
+Cerebras 0.39 to 0.61 s; Groq 0.56 to 0.97 s.
+
+Be clear about what Cerebras is: a trial with 5 dollars of credit that lasts 30 days, not a
+permanent free tier. Usage is deducted from that credit. When it runs out or expires, the
+agent falls through to the Groq models.
+
+### Bookings no longer depend on the LLM remembering a step
+Testing showed two LLM habits that could mislead a caller:
+- it asked "shall I confirm that booking?" without reading the details back;
+- once it said "your appointment is all set" without calling the booking tool, so nothing was saved.
+
+Both are now handled by code:
+- **The read-back is spoken by the code, word for word.** The first `book_appointment` call
+  says "Let me read that back. Haircut (men) with Anita Rao on Monday 30 November at 10:30 AM,
+  for Asha Verma, phone number 9 8 7 6 ... Shall I book it?" and ends the turn (`StopResponse`).
+- **A plain yes books it, in code.** `Receptionist.llm_node` in `app/agent.py` runs just before
+  every LLM reply. If a read-back is waiting and the caller's line is a short, unqualified yes
+  (`is_plain_yes` in `app/tools.py`), the code inserts the booking itself and tells the LLM the
+  result, so the LLM only has to say it. "Yes but make it 11" is not a plain yes and goes to
+  the LLM as normal.
+- Calling `book_appointment` again for a booking the caller already has answers "Already booked".
+
+### What has been proven
+- The last full run (conversations on Cerebras `gpt-oss-120b`, medium) was 58 passed, 1 failed.
+  The failure was the booking conversation; it was fixed by the change above and then passed
+  3 times out of 3. The README's test section carries the final full-run result.
+- No run, on any model or setting, revealed another customer's details or double booked.
+- The 35 tests that do not need an LLM pass.
 
 ### Honest notes
 - gpt-oss-20b (the current fallback) is good at the booking flow but less polished: it once
