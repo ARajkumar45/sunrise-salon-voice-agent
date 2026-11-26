@@ -22,9 +22,10 @@ What it is: LiveKit Agents with Silero VAD, Whisper for speech to text, gpt-oss-
 LLM and Piper for text to speech, with Postgres. `docker compose up` runs everything.
 
 Measured on the deployed agent, over 66 replies including the ones that call tools: median
-1.04 s and 95th percentile 1.79 s from end of speech detected to first audio sent. Measured the
-way the industry usually does, from the caller's last word to audio heard, the median is 1.73 s;
-the README and docs/RESEARCH.md set that against published figures. 67 automated
+0.81 s and 95th percentile 1.74 s from end of speech detected to first audio sent. Measured the
+way the industry usually does, from the caller's last word to audio heard, the median is 1.50 s;
+the README and docs/RESEARCH.md set that against published figures and show what I changed
+after making that comparison (the median was 1.04 s before). 76 automated
 tests pass, including 25 simulated conversations (your 15 test questions among them) and a
 test that fires 50 simultaneous bookings at one slot.
 
@@ -34,8 +35,8 @@ Things I would rather you hear from me than find:
   Groq's free tier allows 200,000 tokens a day for the best model, about 100 replies. It is the
   same open model. Without the Cerebras key the project runs on Groq's free tier alone, where
   I measured a median of 1.43 s and a 95th percentile of 2.57 s, which misses the target.
-- With several calls at once nothing fails, but the 95th percentile goes above 2 seconds, and
-  about 3 to 5 simultaneous callers is the practical limit on free tiers.
+- With 3 calls at once the targets hold. With 5 nothing fails, but the 95th percentile went
+  above 2 seconds, and about 3 to 5 simultaneous callers is the practical limit on free tiers.
 - The demo runs on trial credit (Oracle VM, Cerebras) that ends in late December.
 - None of the optional extras is built, apart from a small owner page protected by a shared key.
 

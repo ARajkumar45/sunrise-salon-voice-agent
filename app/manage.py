@@ -70,6 +70,7 @@ def latency_report(rows: list[dict]) -> str:
         "",
         "Stages (all replies):",
         line("  speech to text (Whisper)", [t["stt_s"] for t in turns]),
+        line("    of which after detection", [t.get("text_ready_after_s") for t in turns]),
         line("  LLM, time to first token", [t["llm_first_token_s"] for t in turns]),
         line("  text to speech, first audio", [t["tts_first_audio_s"] for t in turns]),
         "",

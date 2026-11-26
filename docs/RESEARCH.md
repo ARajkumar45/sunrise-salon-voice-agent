@@ -1,6 +1,7 @@
 # How our numbers compare with published references
 
-Researched on 26 November 2026. Every reference figure below was read on the page or paper
+Researched on 26 November 2026; our own figures were re-measured on 27 November after two
+latency fixes that this comparison led to (see "What we changed" below). Every reference figure below was read on the page or paper
 linked, in that session, unless it is marked **unverified**. Our own figures are measurements
 on the deployed agent (`docs/measurements/`).
 
@@ -24,16 +25,21 @@ So we have three numbers, and each answers a different question:
 | **As heard at the caller's end** | End of the scripted caller's recording | First reply audio received by the scripted caller | "Voice-to-voice" and "mouth-to-ear" figures (Daily, Twilio, Hamming, benchmarks). |
 
 Measured over **66 replies in 21 real voice calls** to the deployed agent, in one continuous
-run with no rate-limit errors (`docs/measurements/final_latency_66_replies.txt`). 27 of the 66
-replies called a tool.
+run with no rate-limit errors (`docs/measurements/latency_after_fixes_66_replies.txt`). 27 of
+the 66 replies called a tool.
 
 | Our number | Median | p95 | Worst |
 |---|---|---|---|
-| Assignment's definition | **1.04 s** | **1.79 s** | 2.08 s |
-| From the caller's last word | 1.52 s | 2.27 s | 2.56 s |
-| As heard at the caller's end | 1.73 s | 2.37 s | 2.75 s |
+| Assignment's definition | **0.81 s** | **1.74 s** | 1.90 s |
+| From the caller's last word | 1.29 s | 2.22 s | 2.38 s |
+| As heard at the caller's end | 1.50 s | 2.35 s | 2.57 s |
 
-Stages (medians): speech to text 0.26 s, LLM first token 0.43 s, text to speech first audio 0.20 s.
+Stages (medians): speech to text 0.26 s (of which only 0.01 s falls after end of speech is
+detected), LLM first token 0.43 s, text to speech first audio 0.20 s.
+
+The first measurement, before the fixes, with the same script: 1.04 s / 1.79 s by the
+assignment's definition, 1.52 s / 2.27 s from the last word, 1.73 s / 2.37 s as heard
+(`docs/measurements/final_latency_66_replies.txt`).
 
 The "as heard" figure slightly understates the truth: the scripted caller's recordings end
 with 0.1 to 0.2 s of silence, so its clock starts that much after the last word.
@@ -111,40 +117,81 @@ reply. That is why the measurement was extended beyond the assignment's minimum 
 ## Honest reading
 
 **Against the assignment's targets** (1.2 s median, 2.0 s p95, its own definition): met, at
-1.04 s and 1.79 s over 66 replies. One reply of 66 took longer than 2.0 s (2.08 s).
+0.81 s and 1.74 s over 66 replies. No reply of the 66 took longer than 2.0 s (worst 1.90 s).
 
-**Against what the industry publishes**, using our like-for-like "as heard" figure of 1.73 s median:
-- It is **slower than the published targets**: Daily and Pipecat's 1,500 ms, Twilio's 1,115 ms
-  mouth-to-ear target (and above its 1,400 ms upper limit), and Hamming's 800 ms.
+**Against what the industry publishes**, using our like-for-like "as heard" figure of 1.50 s median:
+- It is **at Daily and Pipecat's 1,500 ms target**, and still **slower than Twilio's**
+  (1,115 ms mouth-to-ear target, 1,400 ms upper limit) and **Hamming's 800 ms**.
 - It is **in line with what production systems are reported to deliver**: Hamming's observed
   median of 1.4 to 1.7 s, and faster than the 2.38 to 3.76 s medians reported for phone agents.
-- Our tail is good by comparison: p95 2.37 s against Hamming's reported 4.3 to 5.4 s.
+- Our tail is good by comparison: p95 2.35 s against Hamming's reported 4.3 to 5.4 s.
 - It is **far from human conversation**, where gaps average around 0.2 s, and far from
   speech-to-speech models (0.2 to 0.35 s).
 
 So the fair summary is: typical for a production pipeline of this kind, not fast, and it meets
-the assignment's targets because the assignment's clock starts later than the industry's.
+the assignment's targets partly because the assignment's clock starts later than the industry's.
 
-**Where the time goes, against Twilio's per-stage targets:**
+## What we changed because of this comparison, and what it gave
+
+The call logs of the first run showed each stage waiting for the one before it:
+
+| Step (median, replies without a tool) | Before | After |
+|---|---|---|
+| Wait to be sure the caller has finished | 0.48 s | 0.48 s |
+| Speech to text, after that wait | 0.25 s | 0.01 s |
+| LLM first token | 0.44 s | 0.43 s |
+| Text to speech first audio | 0.17 s | 0.20 s |
+
+1. **Speech to text was idle during the end-of-speech wait.** It now starts after 0.2 s of
+   quiet, as a guess, while the decision still takes 0.45 s (`app/stt_early.py`). If the caller
+   carries on talking, the guess is thrown away. This removed about 0.24 s from most replies.
+2. **Piper returns nothing until a whole piece of text is synthesized**, at about 0.045 s per
+   second of speech. A long first sentence is now cut after its first clause
+   (`app/tts_piper.py`). A 9-second booking read-back starts in 0.12 s instead of 0.49 s.
+   Text to speech p95 went from 0.52 s to 0.37 s; the median did not change, because a typical
+   first sentence is short and has no clause to cut at.
+
+| 66 replies each, same script | Before | After |
+|---|---|---|
+| Median, assignment's definition | 1.04 s | 0.81 s |
+| p95, assignment's definition | 1.79 s | 1.74 s |
+| Median as heard | 1.73 s | 1.50 s |
+| p95 as heard | 2.37 s | 2.35 s |
+
+**What did not improve: the slowest replies.** They are tool replies (two LLM requests) that
+follow a dictated phone number. Digit-by-digit speech is full of short pauses, each of which
+wastes an early speech to text attempt. After two wasted attempts in a turn the agent stops
+guessing, because the free tier allows 20 speech to text requests a minute, so those turns get
+no head start.
+
+**What we looked at and could not shorten:**
+- The LLM's 0.43 s. Measured directly from the server, the provider takes 0.36 to 0.40 s to
+  send the first byte even for a one-line prompt, on a connection that is already open; the
+  network to it is 0.02 s; "medium" reasoning adds about 0.05 s over "low". It is the
+  provider's time to start, not ours.
+- The 0.45 s end-of-speech wait. Shortening it without a turn-detection model would cut off
+  callers who pause. It is already a little shorter than the usual default.
+
+**Where the time goes now, against Twilio's per-stage targets:**
 
 | Stage | Ours (median) | Twilio target / upper limit | Verdict |
 |---|---|---|---|
 | End-of-speech wait | 0.45 s | "around 500 ms" is the common default | Slightly better than usual |
-| Speech to text | 0.26 s | 350 / 500 ms | Better than target |
+| Speech to text | 0.26 s, of which 0.01 s adds to the reply time | 350 / 500 ms | Better than target |
 | LLM first token | 0.43 s | 375 / 750 ms | Between target and limit |
 | Text to speech first audio | 0.20 s | 100 / 250 ms | Misses target, inside limit |
 
-The biggest single item is the 0.45 s end-of-speech wait, which the assignment's definition
-does not count. The next lever would be a turn-detection model so that the wait can be
-shortened without cutting callers off, then streaming speech to text.
+The biggest single item is still the 0.45 s end-of-speech wait, which the assignment's
+definition does not count. The next lever would be a turn-detection model so that the wait can
+be shortened without cutting callers off.
 
 **Interruption.** No published target exists to compare against. Ours: the agent stops 0.21 s
 after detecting the caller's speech, about 0.5 s as heard by the caller. The assignment asks
 for half a second.
 
 **Sample size.** 66 replies clears the 59 needed for the 95th percentile to mean something.
-The earlier 22-reply runs (p95 of 1.49 s and 1.64 s) were too small for that, and the larger
-run's 1.79 s is the figure to trust.
+Earlier 22-reply runs gave p95 values between 1.49 s and 1.64 s, which were too small a
+sample to trust.
 
 ## What is not like for like
 - Our headline figure starts after the voice detector's wait. Published figures start at the

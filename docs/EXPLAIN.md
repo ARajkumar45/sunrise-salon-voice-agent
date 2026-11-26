@@ -595,3 +595,98 @@ conversation passes. A final complete run is part of Friday's review.
 > 1.6. With several calls at once nothing fails, but the slowest replies go over 2 seconds,
 > and the real ceiling is the free speech to text limit of 20 requests a minute, about 3 to 5
 > callers. In production I would pay for speech to text or host Whisper myself."
+
+---
+
+## After the milestones: why replies were slower than published targets, and two fixes (Fri 27 Nov)
+
+### The question
+Our reply time met the assignment's targets, but compared the way the industry measures (from
+the caller's last word to audio heard) it was 1.73 s, slower than published targets such as
+1.5 s. So I looked at where each reply's time went, using the call logs of the 66 measured replies.
+
+### What the logs showed
+Every step waited for the step before it. For a reply without a tool (medians):
+
+| Step | Time |
+|---|---|
+| Wait in silence, to be sure the caller has finished | 0.48 s |
+| Then send the recording to Whisper and wait for the text | 0.25 s |
+| Then the LLM starts answering | 0.44 s |
+| Then Piper makes the first audio | 0.17 s |
+
+Two of these could be shortened by us. Two could not.
+
+### Fix 1: speech to text starts during the wait (`app/stt_early.py`)
+Whisper needs the whole recording, so before, it only started once the 0.45 s wait was over.
+But during that wait nothing useful was happening.
+
+Now there are two voice detectors listening to the same audio:
+- A quick one, which says "probably finished" after 0.2 s of quiet. At that moment the
+  recording is sent to Whisper, as a guess.
+- The normal one, which says "finished" after 0.45 s of quiet, as before.
+
+If the caller stays quiet, the text is ready at about the moment the normal detector fires, so
+the LLM can start at once. If the caller carries on talking, the guess is thrown away and a new
+one is made at the next pause, with the whole recording so far. The framework still gets
+exactly one transcript per caller turn.
+
+Two safety points:
+- The decision that the caller has finished still takes the full 0.45 s. Nobody is cut off
+  sooner than before.
+- Each thrown-away guess is a wasted Whisper request, and the free tier allows 20 a minute.
+  So after 2 wasted guesses in one turn, the agent stops guessing for that turn. A caller
+  reading out a phone number digit by digit hits this limit.
+
+### Fix 2: a long sentence is spoken first clause first (`app/tts_piper.py`)
+Piper gives back no audio until it has finished the whole piece of text it was given, and it
+needs about 0.045 s for every second of speech. A booking read-back is 9 seconds of speech, so
+it started 0.49 s late. Now a sentence of 60 characters or more is cut once, after its first
+comma, colon or semicolon. "Let me read that back:" is ready in 0.12 s and the rest is made
+while it plays.
+
+### What could not be shortened
+- **The LLM's 0.43 s.** I timed the provider directly from the server: 0.36 to 0.40 s before
+  the first byte, even for a one-line prompt on an open connection. The network to it is
+  0.02 s. Thinking at "medium" instead of "low" costs about 0.05 s. So this is the provider's
+  time to start, not something in our code.
+- **The 0.45 s wait itself.** Making it shorter would cut off people who pause. Doing that
+  safely needs a turn-detection model, which I did not add.
+
+### A bug I made and caught
+My first version of fix 1 joined the pieces of audio around each pause, and the pieces
+overlapped, so Whisper heard some sounds twice. A phone number came out as
+"9 8 7 6 5 4 4 3 2 1 0" and a booking call failed. I found it by reading the call transcripts
+of the measurement run, not from the latency numbers, which looked fine. The fix keeps one
+continuous recording per turn, and a test now checks that no audio is sent twice. The numbers
+from that faulty run were thrown away.
+
+### Result (66 replies each time, same script)
+
+| | Before | After |
+|---|---|---|
+| Median, assignment's definition | 1.04 s | 0.81 s |
+| 95th percentile, assignment's definition | 1.79 s | 1.74 s |
+| Worst reply | 2.08 s | 1.90 s |
+| Median as heard by the caller | 1.73 s | 1.50 s |
+| 95th percentile as heard | 2.37 s | 2.35 s |
+
+### Honest notes
+- **The typical reply got 0.23 s faster. The slowest replies did not.** The slowest are tool
+  replies after a dictated phone number: two LLM requests, and no head start for speech to
+  text because of the wasted-guess limit.
+- At 1.50 s as heard, we are at Daily's 1.5 s target and still slower than Twilio's 1.1 s.
+- I cannot hear the audio. The cut after the first clause leaves a pause of about 0.35 s
+  there, which is normal for a comma or colon, but Raj should listen to a booking read-back.
+- This changes the plan's pipeline (the plan had speech to text start after the end-of-speech
+  wait). Raj asked for the fix; the change is described here and in the README.
+
+### How to explain this on the review call
+> "My first numbers met your targets, but when I compared them with published figures the way
+> the industry measures, I was slower. The logs showed speech to text only started after the
+> 0.45 second wait that decides the caller has finished. So I added a second, quicker voice
+> detector that sends the audio to Whisper after 0.2 seconds as a guess, while the decision
+> still takes 0.45. That took the median from 1.04 to 0.81 seconds. I also cut long sentences
+> after the first clause so Piper starts speaking sooner. The slowest replies did not improve:
+> they are tool calls after a dictated phone number. What is left is the LLM provider's own
+> 0.4 seconds and the wait itself, which would need a turn-detection model."

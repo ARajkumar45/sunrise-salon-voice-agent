@@ -10,7 +10,7 @@ Usage:
     (add --business other-slug to call a different business)
 
 Timings printed here are measured from outside, at the caller's end. They include
-the 0.55 s the agent waits to be sure the caller has finished, plus network time.
+the 0.45 s the agent waits to be sure the caller has finished, plus network time.
 The agent's own numbers (python -m app.manage call <id>) are the official latency.
 """
 

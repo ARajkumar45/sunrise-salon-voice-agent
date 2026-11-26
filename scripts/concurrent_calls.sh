@@ -7,13 +7,14 @@
 N=${1:-3}
 A=tests/audio
 START=$(date -u +%Y-%m-%dT%H:%M:%S)
+OUT=$(mktemp -d)  # a fresh folder for the callers' output, so old results can never be read by mistake
 FIRST=$(docker compose exec -T db sh -c 'psql -t -A -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT COALESCE(MAX(id),0)+1 FROM calls"')
 
 i=1
 while [ "$i" -le "$N" ]; do
   docker compose --profile test run --rm -T -v "$PWD/tests/audio:/srv/tests/audio:ro" tests \
     python scripts/fake_caller.py ask $A/mens_haircut.wav $A/facial_tuesday.wav $A/sunday.wav $A/colour.wav $A/upi.wav \
-    > "/tmp/concurrent_$i.log" 2>&1 &
+    > "$OUT/caller_$i.log" 2>&1 &
   i=$((i + 1))
 done
 wait
@@ -21,7 +22,7 @@ wait
 echo "===== $N CALLS AT ONCE ====="
 i=1
 while [ "$i" -le "$N" ]; do
-  echo "caller $i: $(grep -c 'wav:' /tmp/concurrent_$i.log) of 5 questions answered"
+  echo "caller $i: $(grep -c 'wav:' "$OUT/caller_$i.log") of 5 questions answered"
   i=$((i + 1))
 done
 LOGS=$(docker compose logs --since "$START" agent 2>&1)

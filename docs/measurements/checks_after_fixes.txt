@@ -1,0 +1,46 @@
+Checks repeated on the deployed agent after the two latency fixes, Fri 27 Nov 2026, about 01:30 IST.
+
+===== INTERRUPTION x3 =====
+agent went quiet 0.52s after the caller started talking over it
+agent went quiet 0.47s after the caller started talking over it
+agent went quiet 0.48s after the caller started talking over it
+interruption: agent stopped 0.215s after caller speech was detected
+interruption: agent stopped 0.214s after caller speech was detected
+interruption: agent stopped 0.262s after caller speech was detected
+===== SILENCE =====
+agent spoke after 14.2s of caller silence
+agent spoke after 25.4s of caller silence
+agent spoke after 38.7s of caller silence
+agent ended the call after 43.3s of caller silence
+
+===== 3 CALLS AT ONCE =====
+caller 1: 5 of 5 questions answered
+caller 2: 5 of 5 questions answered
+caller 3: 5 of 5 questions answered
+rate-limit (429) errors seen by the agent: 0
+fallbacks to the next model:              0
+replies where every model failed:         0
+peak container CPU and memory now:
+app-agent-1  cpu=17.82%  mem=1.049GiB / 11.68GiB
+app-web-1  cpu=27.21%  mem=72.62MiB / 11.68GiB
+app-caddy-1  cpu=0.00%  mem=60.93MiB / 11.68GiB
+app-db-1  cpu=6.85%  mem=72.7MiB / 11.68GiB
+app-tts-1  cpu=0.01%  mem=957.4MiB / 11.68GiB
+
+Reply latency over 15 replies in 3 calls
+(from the moment end of speech is detected to the first reply audio sent)
+
+ALL REPLIES (headline)             n=15  median 0.81s   p95 1.38s   worst 1.38s
+  replies that used a tool         n=3   median 1.28s   p95 1.38s   worst 1.38s
+  replies without a tool           n=12  median 0.66s   p95 1.15s   worst 1.15s
+
+Stages (all replies):
+  speech to text (Whisper)         n=15  median 0.24s   p95 0.41s   worst 0.41s
+    of which after detection       n=15  median 0.00s   p95 0.16s   worst 0.16s
+  LLM, time to first token         n=15  median 0.45s   p95 0.72s   worst 0.72s
+  text to speech, first audio      n=15  median 0.24s   p95 0.54s   worst 0.54s
+
+As the caller feels it (from last word) n=15  median 1.30s   p95 1.86s   worst 1.86s
+
+===== FULL TEST SUITE =====
+======================== 76 passed in 241.88s (0:04:01) ========================

@@ -39,9 +39,10 @@ Browser call page ──WebRTC audio──► LiveKit Cloud (free Build plan, ca
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-One caller turn: the voice detector hears the caller stop → the audio goes to Whisper → the
-text goes to the LLM, which may call booking tools → the reply goes to Piper one sentence at a
-time → audio returns to the browser through LiveKit.
+One caller turn: the voice detector hears the caller stop (Whisper has already been sent the
+recording a moment earlier, see Latency) → the text goes to the LLM, which may call booking
+tools → the reply goes to Piper one sentence at a time → audio returns to the browser through
+LiveKit.
 
 ### What is used and where it runs
 
@@ -162,36 +163,72 @@ continuous run with no rate-limit errors:
 
 | | Median | p95 | Worst | Target |
 |---|---|---|---|---|
-| **All 66 replies** | **1.04 s** | **1.79 s** | 2.08 s | 1.2 s / 2.0 s |
-| Replies that used a tool (27) | 1.42 s | 1.82 s | 2.08 s | |
-| Replies without a tool (39) | 0.91 s | 1.28 s | 1.45 s | |
+| **All 66 replies** | **0.81 s** | **1.74 s** | 1.90 s | 1.2 s / 2.0 s |
+| Replies that used a tool (27) | 1.17 s | 1.79 s | 1.90 s | |
+| Replies without a tool (39) | 0.71 s | 0.89 s | 1.33 s | |
 
 | Stage | Median | p95 |
 |---|---|---|
 | Speech to text (Whisper) | 0.26 s | 0.36 s |
+| ...of which after end of speech was detected | 0.01 s | 0.36 s |
 | LLM, time to first token | 0.43 s | 0.56 s |
-| Text to speech, first audio | 0.20 s | 0.52 s |
+| Text to speech, first audio | 0.20 s | 0.37 s |
 
-The stages do not add up to the total: a tool reply makes two LLM requests, and the first
-sentence must be complete before Piper speaks it.
+The stages do not add up to the total: a tool reply makes two LLM requests, and speech to
+text mostly runs before the clock starts (see below).
 
 **The same replies measured the way the industry usually measures**, which starts the clock
 earlier, at the caller's last word:
 
 | | Median | p95 |
 |---|---|---|
-| From the caller's last word to first audio sent (adds the 0.45 s end-of-speech wait) | 1.52 s | 2.27 s |
-| As heard at the caller's end (the scripted caller's own clock) | 1.73 s | 2.37 s |
+| From the caller's last word to first audio sent (adds the 0.45 s end-of-speech wait) | 1.29 s | 2.22 s |
+| As heard at the caller's end (the scripted caller's own clock) | 1.50 s | 2.35 s |
 
-By that measure the agent is typical of production voice pipelines and slower than the
-published targets (for example 1.5 s from Daily and Pipecat, 1.1 s from Twilio). Sources and a
-fuller comparison, including human conversation timing, are in [docs/RESEARCH.md](docs/RESEARCH.md).
+By that measure the agent is typical of production voice pipelines. It is at the 1.5 s target
+published by Daily and Pipecat and slower than Twilio's (1.1 s target, 1.4 s upper limit).
+Sources and a fuller comparison, including human conversation timing, are in
+[docs/RESEARCH.md](docs/RESEARCH.md).
 
-Why 66 and not 20: a 95th percentile needs at least 59 samples to be meaningful. Earlier
-22-reply runs gave a p95 of 1.49 s and 1.64 s; the larger run's 1.79 s is the one to trust.
+### Two fixes made after the first 66-reply measurement
+
+The first 66-reply run gave a median of 1.04 s and a p95 of 1.79 s (1.73 s median as heard).
+The call logs showed every stage running strictly one after another, so two things were changed:
+
+1. **Speech to text now starts during the end-of-speech wait** (`app/stt_early.py`). Before,
+   the agent waited 0.45 s of quiet and only then sent the recording to Whisper (another
+   0.26 s). Now a second, quicker voice detector sends the recording after 0.2 s of quiet, as
+   a guess that the caller has finished. If the caller carries on, that attempt is thrown away.
+   The decision that the caller has finished still takes the full 0.45 s.
+2. **A long sentence is spoken first clause first** (`app/tts_piper.py`). Piper returns no
+   audio until a whole piece of text is done, so a 9-second booking read-back started 0.49 s
+   late. Cut after its first clause, it starts in 0.12 s.
+
+| Same script, 66 replies each | Before | After |
+|---|---|---|
+| Median, assignment's definition | 1.04 s | 0.81 s |
+| p95, assignment's definition | 1.79 s | 1.74 s |
+| Median as heard by the caller | 1.73 s | 1.50 s |
+| p95 as heard by the caller | 2.37 s | 2.35 s |
+
+**The median improved by about 0.23 s; the slowest replies did not.** They are replies that
+call a tool (two LLM requests) after the caller dictated a phone number. Digit-by-digit speech
+is full of short pauses, each of which wastes an early attempt, so after two wasted attempts
+in one turn the agent stops guessing (to protect the 20 requests a minute of the free speech
+to text tier) and that turn gets no head start.
+
+What is left is not ours to shorten on this setup: the LLM's 0.43 s is the provider's time to
+start answering (the network to it is 0.02 s), and Piper needs about 0.045 s per second of
+speech. The next lever would be a turn-detection model, so the 0.45 s wait itself can shrink
+without cutting callers off.
+
+Why 66 and not 20: a 95th percentile needs at least 59 samples to be meaningful.
 
 This is with the live configuration (Cerebras first). On Groq's free tier alone a 22-reply run
-gave a median of 1.43 s and a p95 of 2.57 s, which misses the targets.
+(before the two fixes) gave a median of 1.43 s and a p95 of 2.57 s, which misses the targets.
+
+Raw output: `docs/measurements/latency_after_fixes_66_replies.txt` (after) and
+`docs/measurements/final_latency_66_replies.txt` (before).
 
 Reproduce on the server: `sh scripts/measure_latency.sh` (one round, 22 replies).
 
@@ -215,10 +252,13 @@ Each scripted caller asks five questions, one of which needs a tool.
 | 3 | Cerebras first | 15 of 15 | 0 | 1.07 s | 3.63 s |
 | 5 | Cerebras first | 25 of 25 | 0 | 1.22 s | 2.77 s |
 | 8 | Cerebras first | 40 of 40 | 79 | 3.11 s | 15.1 s |
-| 3 | Cerebras first, final run | 15 of 15 | 0 | 1.09 s | 2.19 s |
+| 3 | Cerebras first, 26 Nov | 15 of 15 | 0 | 1.09 s | 2.19 s |
+| 3 | Cerebras first, after the two latency fixes (27 Nov) | 15 of 15 | 0 | 0.81 s | 1.38 s |
 
 - No call failed and no reply was lost at any level.
-- Up to 5 calls the median holds, but **p95 goes above the 2.0 s target under load**.
+- After the two latency fixes, 3 calls at once stay inside both targets (15 replies, so the
+  p95 is only indicative). 5 and 8 at once were measured before the fixes and not repeated:
+  there the median held up to 5 calls, but **p95 went above the 2.0 s target**.
 - 8 at once is too many for the free tiers. The errors were most likely Groq's speech to text
   limit of 20 requests a minute (not confirmed: the logs were cleared by a restart).
 - The VM was not the limit: 20 to 30% CPU, 1.5 GB of 12 GB.
@@ -238,7 +278,7 @@ Reproduce: `sh scripts/concurrent_calls.sh 3`.
 |---|---|---|---|
 | Groq LLM, 8,000 tokens/minute per model | Yes, by a single booking call | Automatic fallback to the next model; no failed reply | Paid tier, or self-hosted model |
 | Groq LLM, 200,000 tokens/day per model | Yes, during testing | Calls ran on the weaker fallback until it refilled | Same; this is why Cerebras was added |
-| Groq Whisper, 20 requests/minute | Probably, at 8 calls at once | Replies delayed by retries | Paid tier, or self-hosted Whisper on a GPU |
+| Groq Whisper, 20 requests/minute | Probably, at 8 calls at once | Replies delayed by retries. Starting speech to text early adds up to 2 requests to a turn in which the caller pauses mid-sentence | Paid tier, or self-hosted Whisper on a GPU |
 | LiveKit Cloud Build plan, 5,000 participant minutes/month | No | Hard cap, never bills | Paid plan or self-hosted LiveKit |
 
 What was done about it: three-model fallback, a second provider, requests cut from about 2,350
@@ -262,9 +302,11 @@ Tests use a separate throwaway database, never the live one.
 | `tests/test_double_booking.py` | 50 simultaneous attempts on one slot, 20 rounds: exactly one wins. Also racing reschedules, reschedule against a new booking, 30 callers for a just-cancelled slot. With the unique index removed, all four fail. | 4 |
 | `tests/test_tools.py` | Confirmation rules, the code-completed booking, privacy of tool answers | 8 |
 | `tests/test_isolation.py` | One business cannot see or change another's data | 7 |
+| `tests/test_stt_early.py` | Early speech to text, with the real voice detector and real recordings: one transcript per caller turn, the whole turn in it, no audio sent twice, at most 3 requests for a turn full of pauses | 4 |
+| `tests/test_tts_piper.py` | Where a long sentence is cut for Piper, and where it must not be (short sentences, "12,500", stray words) | 5 |
 | `tests/test_conversations.py` | Simulated conversations with the real instructions, tools and model: the brief's 15 test questions, a full booking with "next Monday", "tomorrow", a taken slot, cancel, attempts to cancel someone else's booking, prompt tricks, a staff message, the second business | 25 |
 
-Last complete run, on the deployed server: **67 passed, 0 failed** (42 without an LLM, 25
+Last complete run, on the deployed server: **76 passed, 0 failed** (51 without an LLM, 25
 simulated conversations). Full list: [docs/test-results.txt](docs/test-results.txt).
 
 The simulated conversations call a hosted LLM, so they use tokens (about 100,000 per run) and

@@ -2,7 +2,7 @@
 
 Each caller turn goes:
     voice detector (Silero VAD) hears the caller stop
-    -> speech to text (Whisper on Groq)
+    -> speech to text (Whisper on Groq; started a little early, see app/stt_early.py)
     -> LLM (gpt-oss on Groq), with the business's data in its instructions
     -> text to speech (Piper, one sentence at a time)
     -> audio back to the caller
@@ -23,6 +23,7 @@ from livekit.plugins import groq, openai, silero
 from app import db
 from app.call_log import CallRecorder
 from app.prompt import build_instructions
+from app.stt_early import EARLY_SILENCE, EarlySTT
 from app.tools import build_tools
 from app.tts_piper import PiperTTS
 
@@ -137,6 +138,8 @@ server = AgentServer()
 def prewarm(process: JobProcess) -> None:
     """Runs once per worker process, before any call, so the first turn is not slow."""
     process.userdata["vad"] = silero.VAD.load(min_silence_duration=END_OF_SPEECH_SILENCE)
+    # A quicker detector, used only to start speech to text early (see app/stt_early.py).
+    process.userdata["early_vad"] = silero.VAD.load(min_silence_duration=EARLY_SILENCE)
 
 
 server.setup_fnc = prewarm
@@ -155,11 +158,13 @@ async def handle_call(ctx: JobContext) -> None:
     log.info("call %s started for %s in room %s", call_id, slug, ctx.room.name)
 
     # 2. Build the voice pipeline.
-    stt = groq.STT(model=STT_MODEL, language="en")
+    whisper = groq.STT(model=STT_MODEL, language="en")
     models = build_llm()
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
-        stt=stt,
+        # Whisper starts on the recording before the end-of-speech wait is over.
+        stt=EarlySTT(wrapped=whisper, early_vad=ctx.proc.userdata["early_vad"],
+                     turn_vad=ctx.proc.userdata["vad"]),
         llm=models,
         tts=PiperTTS(),
         turn_handling={
@@ -175,7 +180,7 @@ async def handle_call(ctx: JobContext) -> None:
 
     # 3. Record the transcript and the latency of every reply.
     recorder = CallRecorder(call_id, session)
-    stt.on("metrics_collected", recorder.on_stt_metrics)
+    whisper.on("metrics_collected", recorder.on_stt_metrics)
     models.on("metrics_collected", recorder.on_llm_metrics)
     ctx.add_shutdown_callback(recorder.finish)
 
