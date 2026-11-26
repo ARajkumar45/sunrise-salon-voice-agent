@@ -35,7 +35,8 @@ async def database():
         admin.execute("DROP DATABASE IF EXISTS receptionist_test WITH (FORCE)")
         admin.execute("CREATE DATABASE receptionist_test")
     await db.init_schema()
-    await db.save_business(yaml.safe_load((DATA / "sunrise-salon.yaml").read_text()))
+    for file in ("sunrise-salon.yaml", "greenline-auto-care.yaml"):
+        await db.save_business(yaml.safe_load((DATA / file).read_text()))
     yield
     await db.close()
 
@@ -46,6 +47,12 @@ async def salon(database) -> dict:
     async with (await db.pool()).connection() as conn:
         await conn.execute("TRUNCATE bookings, staff_messages RESTART IDENTITY")
     return await db.load_business("sunrise-salon")
+
+
+@pytest.fixture
+async def garage(salon) -> dict:
+    """The second business. Depends on `salon` so both start each test with no bookings."""
+    return await db.load_business("greenline-auto-care")
 
 
 @pytest.fixture

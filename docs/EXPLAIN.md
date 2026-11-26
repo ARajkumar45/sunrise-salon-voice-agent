@@ -438,3 +438,74 @@ Both are now handled by code:
 > "I test with simulated conversations that run the real instructions, tools and models, one
 > per test question from the brief. They showed me the fastest model setting was skipping
 > rules, so I traded about 0.3 seconds of latency for a setting that follows them."
+
+---
+
+## Milestone 4: a second business with data only (Thu 26 Nov)
+
+### What was done
+A car service centre, **Greenline Auto Care**, now has its own live call page at
+`/call/greenline-auto-care`. It was added with one new file, `data/greenline-auto-care.yaml`,
+and one command. `git status` showed that file as the only change: no code was touched.
+
+It is deliberately different from the salon, to show the differences come from data:
+60-minute slots (salon: 30), "mechanic" instead of "stylist", free cancellation up to 24 hours
+(salon: 2), no cash accepted, different people, days and services.
+
+### How long it took
+- Loading the file and getting a working call page on the live server: **16 seconds**
+  (one command, measured with a stopwatch in the shell).
+- Writing the file: the AI assistant wrote it in under a minute. By hand, copying the salon's
+  file and changing the values, expect 10 to 15 minutes. (Estimate, not measured.)
+- Server restarts needed: none. The next call simply reads the new rows.
+
+### The exact steps
+```bash
+# 1. Copy data/sunrise-salon.yaml to a new file and edit the values.
+# 2. Load it (on the server; the file is piped in, so the image is not rebuilt):
+docker compose exec -T web python -m app.manage load /dev/stdin < data/greenline-auto-care.yaml
+# 3. Open /call/greenline-auto-care and press Call.
+```
+The same command with an edited file updates an existing business. That is the live-change
+procedure for the review call.
+
+### Why one business cannot see another's data
+- Every table that holds business data has a `business_id` column, and every query in
+  `app/db.py` and `app/booking.py` filters on it.
+- The agent for a call is built from one business's rows (`db.load_business(slug)`), so its
+  instructions contain only that business.
+- The tools are created with that business baked in (`build_tools(business, ...)`). No tool
+  has a parameter for choosing a business, so there is nothing for a trick prompt to aim at.
+- The slug comes from the signed call token, set by our server from the page URL.
+
+### Proof
+`tests/test_isolation.py` (7 tests, no LLM needed):
+- each agent's instructions contain its own facts and none of the other's;
+- the garage runs on its own slot length, days and cancellation rule;
+- neither business can use the other's services;
+- a salon booking is invisible to the garage, even with the same phone number and the booking's
+  id, and cannot be cancelled or moved from the garage's side;
+- the garage's 10:00 stays free when the salon's 10:00 is booked;
+- staff messages and call logs stay with their business;
+- reloading a business's file keeps its existing bookings.
+
+One simulated conversation: the garage agent quotes the oil change price, and asked about a
+men's haircut with Anita it says it has no such information.
+
+A scripted voice call to the live garage page: "An oil change costs Rs 1,800 and is done by
+Imran Sheikh", "I can only help with Greenline Auto Care services", "48 Baner Road in Baner, Pune".
+
+Test count now: 42 without an LLM, 25 simulated conversations.
+
+### Honest notes
+- Isolation is enforced by the application's queries, not by database row-level security. A
+  bug in a new query that forgot `business_id` could leak. The isolation tests exist to catch
+  that. Row-level security in Postgres would be the next layer for a real product.
+- Both businesses are in the same timezone, so a second timezone is covered only by the code
+  using the business's timezone everywhere, not by a test.
+
+### How to explain this on the review call
+> "Adding a business is adding rows. I copied the salon's data file, changed the values, ran
+> one load command, and the garage's page was taking calls 16 seconds later with no code change
+> and no restart. The agent is built per call from that business's rows, and its tools are
+> created with the business fixed inside them, so there is no way to ask for another business."

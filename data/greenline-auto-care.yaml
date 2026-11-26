@@ -1,0 +1,47 @@
+# A second business, added with this file only. No code was changed.
+#   python -m app.manage load data/greenline-auto-care.yaml
+
+slug: greenline-auto-care
+name: Greenline Auto Care
+timezone: Asia/Kolkata
+address: 48 Baner Road, Baner, Pune
+slot_minutes: 60
+staff_word: mechanic
+greeting: Hello, Greenline Auto Care. How can I help with your car today?
+free_cancellation_hours: 24
+
+staff:
+  - name: Imran Sheikh
+    does: General service and oil changes
+    days: [mon, tue, wed, thu, fri, sat]
+    hours: 09:00-17:00
+  - name: Deepa Kulkarni
+    does: Brakes, AC and electrical work
+    days: [mon, wed, fri]
+    hours: 10:00-16:00
+  - name: Suresh Patil
+    does: Wheel alignment and tyres
+    days: [tue, thu, sat]
+    hours: 09:00-13:00
+
+services:
+  - { name: General service,         staff: Imran Sheikh,   price: "From Rs 3,500, depends on the car model" }
+  - { name: Oil change,              staff: Imran Sheikh,   price: "Rs 1,800" }
+  - { name: Brake inspection,        staff: Deepa Kulkarni, price: "Rs 600" }
+  - { name: AC service,              staff: Deepa Kulkarni, price: "Rs 2,200" }
+  - { name: Wheel alignment,         staff: Suresh Patil,   price: "Rs 900" }
+  - { name: Tyre rotation,           staff: Suresh Patil,   price: "Rs 500" }
+
+not_offered: [body painting, insurance claims, car wash, towing, two-wheeler service]
+
+notes:
+  - Closed on Sundays.
+  - Each booking is a one hour drop-off slot. The car may need to stay longer.
+  - Cancellation is free up to 24 hours before the appointment.
+  - There is no information on file about warranties or loyalty programmes.
+
+faqs:
+  - { topic: Payment,       answer: "UPI, cards and bank transfer. No cash." }
+  - { topic: Pick-up,       answer: "There is no pick-up and drop service. Please bring the car in." }
+  - { topic: Waiting area,  answer: "There is a waiting lounge with Wi-Fi." }
+  - { topic: Spare parts,   answer: "Only genuine manufacturer parts are used. Parts are billed separately." }

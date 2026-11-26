@@ -314,3 +314,15 @@ async def test_question_is_passed_to_staff(salon):
         assert "leave_message_for_staff" in reply.tools
     messages = await db.list_staff_messages("sunrise-salon")
     assert len(messages) == 1 and "membership" in messages[0]["message"].lower()
+
+
+# =====================================================================================
+# The second business (added with data only)
+# =====================================================================================
+
+async def test_the_garage_agent_answers_as_the_garage(garage):
+    async with Call(garage) as call:
+        price = await call.say("How much is an oil change?")
+        assert price.has("1,800", "1800", "eighteen hundred", "one thousand eight hundred") and price.has("imran")
+        other = await call.say("And how much is a men's haircut with Anita?")
+        assert not other.has("400", "four hundred", "sunrise")   # it knows nothing about the salon
