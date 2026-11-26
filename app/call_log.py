@@ -119,6 +119,12 @@ class CallRecorder:
                                 "result": output.output if output else None,
                                 "failed": bool(output and output.is_error)})
 
+    def on_auto_booking(self, caller_text: str, result: str) -> None:
+        """The code completed a booking after the caller's yes (see Receptionist in agent.py)."""
+        self.used_tool = True
+        self.write("tool", {"name": "book_appointment (completed by code after caller's yes)",
+                            "arguments": {"caller_said": caller_text}, "result": result, "failed": False})
+
     def on_error(self, event) -> None:
         self.write("error", {"error": str(event.error)[:500]})
 

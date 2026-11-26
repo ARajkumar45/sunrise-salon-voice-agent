@@ -1,7 +1,7 @@
 """The agent's tools: the two-step confirmation rule, and that tools only see their own business."""
 
 from app import booking
-from app.tools import build_tools
+from app.tools import build_tools, is_plain_yes
 from tests.conftest import count_bookings
 
 PHONE = "9876543210"
@@ -9,7 +9,8 @@ PHONE = "9876543210"
 
 def tools_for(business, turn_counter):
     """Returns the tools as plain async functions, keyed by name."""
-    return {tool.info.name: tool for tool in build_tools(business, call_id=None, caller_turns=lambda: turn_counter["n"])}
+    tools, finish_booking = build_tools(business, call_id=None, caller_turns=lambda: turn_counter["n"])
+    return {**{tool.info.name: tool for tool in tools}, "finish_booking": finish_booking}
 
 
 def far_future_slot(salon) -> tuple[str, str]:
@@ -96,3 +97,44 @@ async def test_facial_on_tuesday_tool_answer(salon):
         day += dt.timedelta(days=1)
     answer = await tools["check_availability"](service="Facial", date=day.isoformat())
     assert "does not work on Tuesdays" in answer and "Wednesday" in answer
+
+
+def test_what_counts_as_a_plain_yes():
+    for text in ["Yes.", "Yes, that's right, please book it.", "yeah go ahead", "Correct", "OK, confirm", "Sure, sounds good"]:
+        assert is_plain_yes(text), text
+    for text in ["No", "Yes but make it 11 instead", "Actually, change the time", "not yet", "wait",
+                 "What was the price again?", "", "yes " * 20, "Is the stylist nice?"]:
+        assert not is_plain_yes(text), text
+
+
+async def test_code_completes_the_booking_when_the_caller_says_yes(salon):
+    """The LLM does not have to remember the second call: a plain yes after the read-back books it."""
+    turn = {"n": 1}
+    tools = tools_for(salon, turn)
+    date, time = far_future_slot(salon)
+
+    assert await tools["finish_booking"]("yes") is None            # nothing was read back yet
+    await tools["book_appointment"](service="Haircut (men)", date=date, time=time,
+                                    customer_name="Asha", customer_phone=PHONE)
+    assert await tools["finish_booking"]("Hmm, what was the price?") is None
+    assert await count_bookings() == 0
+
+    turn["n"] = 2
+    result = await tools["finish_booking"]("Yes, that's right, please book it.")
+    assert result.startswith("BOOKED") and await count_bookings() == 1
+    assert await tools["finish_booking"]("yes") is None            # a second yes books nothing more
+    assert await count_bookings() == 1
+
+
+async def test_one_yes_is_enough_when_the_agent_already_read_the_time_back(salon):
+    date, time = far_future_slot(salon)
+    lines = {"agent": "Men's haircut with Anita Rao at 10:30 AM, shall I book that?", "caller": "Yes, please go ahead."}
+    tools, _ = build_tools(salon, None, lambda: 3, lambda: (lines["agent"], lines["caller"]))
+    book = {tool.info.name: tool for tool in tools}["book_appointment"]
+    args = dict(service="Haircut (men)", date=date, time=time, customer_name="Asha", customer_phone=PHONE)
+    assert (await book(**args)).startswith("Booked.")
+
+    # But not if the agent never said the time, or the caller did not plainly agree.
+    lines["agent"] = "May I have your phone number?"
+    other = dict(args, time="11:00")
+    assert (await book(**other)).startswith("NOT booked yet")

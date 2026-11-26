@@ -11,7 +11,7 @@ When something cannot be done, the tool returns the reason as plain words
 
 import datetime as dt
 
-from livekit.agents import function_tool
+from livekit.agents import StopResponse, function_tool
 
 from app import booking, db
 from app.booking import BookingError
@@ -25,8 +25,28 @@ def spoken_digits(phone: str) -> str:
     return " ".join(booking.clean_phone(phone))
 
 
-def build_tools(business: dict, call_id: int, caller_turns=lambda: 0) -> list:
+YES_WORDS = ("yes", "yeah", "yep", "yup", "correct", "right", "sure", "ok", "okay", "go ahead",
+             "please do", "book it", "confirm", "confirmed", "that's fine", "sounds good", "perfect")
+NOT_A_PLAIN_YES = ("no", "not", "don't", "but", "wait", "change", "instead", "actually", "wrong", "different", "cancel")
+
+
+def is_plain_yes(text: str) -> bool:
+    """True for a short, unqualified yes like "Yes, that's right, please book it".
+
+    Anything longer or hedged ("yes but make it 11") is left for the LLM to handle.
+    """
+    words = "".join(ch if ch.isalnum() or ch in "' " else " " for ch in text.lower().replace("’", "'")).split()
+    if not words or len(words) > 12 or any(word in NOT_A_PLAIN_YES for word in words):
+        return False
+    joined = " ".join(words)
+    return any(joined == yes or joined.startswith(yes + " ") or f" {yes} " in f" {joined} " for yes in YES_WORDS)
+
+
+def build_tools(business: dict, call_id: int, caller_turns=lambda: 0,
+                last_lines=lambda: ("", ""), speak=None) -> tuple[list, object]:
     """`caller_turns` returns how many times the caller has spoken so far in this call.
+    `last_lines` returns (the agent's last spoken line, the caller's last line).
+    `speak` says a fixed sentence to the caller without going through the LLM.
 
     Safety rules enforced in code, not just in the prompt. The agent can never look something
     up and change it in the same breath; the caller always speaks in between.
@@ -37,7 +57,7 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0) -> list:
     - Move or cancel: refused unless the caller has spoken since find_my_bookings showed
       their booking. So they have heard which booking it is and answered.
     """
-    waiting = {"action": None, "turn": -1}
+    waiting = {"action": None, "turn": -1, "booking": None}
     last_lookup = {"turn": 10**9}  # no lookup yet
 
     def read_back_confirmed(*action) -> bool:
@@ -102,10 +122,26 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0) -> list:
             chosen = booking.find_service(business, service)
             day = booking.parse_date(date)
             slot = booking.check_slot(business, chosen, day, booking.parse_time(time), booking.now_at(business))
-            if slot not in await booking.free_slots(business, chosen, day):
-                return f"Not booked. {booking.say_slot(slot)} is already taken. Check availability and offer another time."
             phone = booking.clean_phone(customer_phone)
-            if not read_back_confirmed("book", chosen["id"], slot, phone):
+            if slot not in await booking.free_slots(business, chosen, day):
+                # Taken. If it is this caller's own booking (already completed), say so calmly.
+                mine = await booking.bookings_for_phone(business, phone)
+                if any(b["when"] == booking.say_slot(slot) for b in mine):
+                    return f"Already booked: {chosen['name']} on {booking.say_slot(slot)} is confirmed for this caller."
+                return f"Not booked. {booking.say_slot(slot)} is already taken. Check availability and offer another time."
+            # Sometimes the agent reads the details back by itself and the caller says yes before
+            # this tool is ever called. That counts: the caller heard the time and agreed.
+            agent_line, caller_line = last_lines()
+            already_agreed = is_plain_yes(caller_line) and db.format_time(slot.time()).lower() in agent_line.lower()
+            if not already_agreed and not read_back_confirmed("book", chosen["id"], slot, phone):
+                waiting["booking"] = (service, date, time, customer_name, customer_phone)
+                if speak is not None:
+                    # The read-back is too important to leave to the LLM's wording: the code
+                    # says it, word for word, and ends the turn so the caller can answer.
+                    await speak(f"Let me read that back. {chosen['name']} with {chosen['staff_name']} on "
+                                f"{booking.say_slot(slot)}, for {customer_name}, phone number "
+                                f"{spoken_digits(phone)}. Shall I book it?")
+                    raise StopResponse()
                 return (f"NOT booked yet. Ask the caller to confirm: {chosen['name']} with {chosen['staff_name']} on "
                         f"{booking.say_slot(slot)}, name {customer_name}, phone {spoken_digits(phone)}. "
                         "When they say yes, call book_appointment again with the same details.")
@@ -191,5 +227,23 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0) -> list:
                                    "".join(ch for ch in caller_phone if ch.isdigit())[-10:])
         return "Message saved for the staff. Tell the caller the staff will get back to them."
 
-    return [check_availability, book_appointment, find_my_bookings, reschedule_booking, cancel_booking,
-            leave_message_for_staff]
+    async def finish_booking_if_caller_said_yes(caller_text: str) -> str | None:
+        """Called with each new caller line, before the LLM sees it (see Receptionist in agent.py).
+
+        If the agent has just read back a booking and the caller answers with a plain yes, the
+        code books it here and returns the result. This does not depend on the LLM remembering
+        to call book_appointment a second time, so the agent cannot say "you're booked" when
+        nothing was saved.
+        """
+        if waiting["action"] is None or waiting["action"][0] != "book" or not is_plain_yes(caller_text):
+            return None
+        details, waiting["action"] = waiting["booking"], None
+        try:
+            done = await booking.book(business, *details, call_id)
+            return f"BOOKED: {done['service']} with {done['with']} on {done['when']}. Price: {done['price']}."
+        except BookingError as problem:
+            return f"NOT booked. {problem}"
+
+    tools = [check_availability, book_appointment, find_my_bookings, reschedule_booking, cancel_booking,
+             leave_message_for_staff]
+    return tools, finish_booking_if_caller_said_yes

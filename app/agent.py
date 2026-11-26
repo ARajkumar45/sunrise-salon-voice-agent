@@ -18,7 +18,7 @@ import os
 
 from dotenv import load_dotenv
 from livekit.agents import Agent, AgentServer, AgentSession, JobContext, JobProcess, cli, llm
-from livekit.plugins import groq, silero
+from livekit.plugins import groq, openai, silero
 
 from app import db
 from app.call_log import CallRecorder
@@ -31,11 +31,15 @@ log = logging.getLogger("receptionist")
 
 AGENT_NAME = "receptionist"
 STT_MODEL = "whisper-large-v3-turbo"  # open model (OpenAI Whisper), served by Groq
-# Open-weight LLMs served by Groq, in order of preference. In our simulated conversations
-# gpt-oss-120b with "medium" reasoning followed the rules best; Qwen was the least reliable
-# (it once claimed a booking it never looked up), so it is the last resort. Groq's free tier allows each model
-# 8,000 tokens a minute, counted separately. If one is rate limited or slow, the next is used.
-LLM_MODELS = os.environ.get("LLM_MODELS", "openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b").split(",")
+# Open-weight LLMs, tried in this order. Each entry is "provider:model". If one is rate
+# limited or slow, the next is used (see build_llm). Cerebras entries are skipped when there
+# is no CEREBRAS_API_KEY, so the project also runs with a Groq key alone.
+# In our simulated conversations gpt-oss-120b with "medium" reasoning followed the rules best.
+# Qwen was the least reliable (it once claimed a booking it never looked up): last resort.
+LLM_MODELS = os.environ.get(
+    "LLM_MODELS",
+    "groq:openai/gpt-oss-120b,cerebras:gpt-oss-120b,groq:openai/gpt-oss-20b,groq:qwen/qwen3.8-27b",
+).split(",")
 # How hard the gpt-oss models think before answering: "low" is fastest, "medium" follows rules better.
 LLM_REASONING = os.environ.get("LLM_REASONING", "medium")
 MAX_REPLY_TOKENS = int(os.environ.get("MAX_REPLY_TOKENS", "700"))  # includes the model's hidden reasoning
@@ -55,23 +59,76 @@ GOODBYE = "I'll end the call for now. Please call again any time. Goodbye."
 
 def build_llm() -> llm.FallbackAdapter:
     """The LLM, with automatic fallback to the next model on a rate limit or timeout."""
-    return llm.FallbackAdapter(
-        [groq.LLM(model=m, max_completion_tokens=MAX_REPLY_TOKENS,
-                  **({"reasoning_effort": LLM_REASONING} if "gpt-oss" in m else {}))
-         for m in LLM_MODELS],
-        attempt_timeout=LLM_ATTEMPT_TIMEOUT,
-    )
+    models = []
+    for entry in LLM_MODELS:
+        provider, model = entry.strip().split(":", 1)
+        options = {"model": model, "max_completion_tokens": MAX_REPLY_TOKENS}
+        if "gpt-oss" in model:
+            options["reasoning_effort"] = LLM_REASONING
+        if provider == "groq":
+            models.append(groq.LLM(**options))
+        elif provider == "cerebras" and os.environ.get("CEREBRAS_API_KEY"):
+            # Cerebras speaks the OpenAI API, so the OpenAI plugin works with a different address.
+            models.append(openai.LLM(base_url="https://api.cerebras.ai/v1",
+                                     api_key=os.environ["CEREBRAS_API_KEY"], **options))
+    return llm.FallbackAdapter(models, attempt_timeout=LLM_ATTEMPT_TIMEOUT)
 
 
-def build_agent(business: dict, call_id: int | None, session: AgentSession) -> Agent:
-    """Instructions and tools for one call to one business. Used by live calls and by the tests."""
+class Receptionist(Agent):
+    """The agent for one call: instructions and tools built from one business's data."""
 
-    def caller_turns() -> int:
-        """How many times the caller has spoken so far. The tools' safety rules use this."""
-        return sum(1 for item in session.history.items
-                   if getattr(item, "type", None) == "message" and item.role == "user")
+    def __init__(self, business: dict, call_id: int | None, session: AgentSession, on_auto_booking=None) -> None:
+        def caller_turns() -> int:
+            """How many times the caller has spoken so far. The tools' safety rules use this."""
+            return sum(1 for item in session.history.items
+                       if getattr(item, "type", None) == "message" and item.role == "user")
 
-    return Agent(instructions=build_instructions(business), tools=build_tools(business, call_id, caller_turns))
+        def last_lines() -> tuple[str, str]:
+            """(the agent's last line, the caller's last line), as text."""
+            said = {"assistant": "", "user": ""}
+            for item in session.history.items:
+                if getattr(item, "type", None) == "message" and item.role in said:
+                    said[item.role] = item.text_content or ""
+            return said["assistant"], said["user"]
+
+        tools, self.finish_booking_if_caller_said_yes = build_tools(
+            business, call_id, caller_turns, last_lines, speak=lambda text: session.say(text))
+        self.on_auto_booking = on_auto_booking  # lets the call log record it like a tool call
+        self.lines_checked: set[str] = set()    # caller lines already checked for a "yes"
+        self.booking_results: list[str] = []    # bookings the code completed during this call
+        super().__init__(instructions=build_instructions(business), tools=tools)
+
+    async def llm_node(self, chat_ctx: llm.ChatContext, tools, model_settings):
+        """Runs every time the LLM is about to answer. We add one step in front of it.
+
+        If a booking was read back and the caller has just said a plain yes, the code
+        completes the booking now and tells the LLM what happened, so the LLM only has to
+        say it. The agent therefore cannot say "you're booked" when nothing was saved.
+        """
+        caller_lines = [item for item in chat_ctx.items
+                        if getattr(item, "type", None) == "message" and item.role == "user"]
+        if caller_lines and caller_lines[-1].id not in self.lines_checked:
+            line = caller_lines[-1]
+            self.lines_checked.add(line.id)
+            result = await self.finish_booking_if_caller_said_yes(line.text_content or "")
+            if result is not None:
+                self.booking_results.append(result)
+                if self.on_auto_booking:
+                    self.on_auto_booking(line.text_content, result)
+                chat_ctx.add_message(role="system", content=(
+                    f"[Booking system] The caller confirmed. Result: {result} "
+                    "Tell the caller this result in one sentence. Do not call book_appointment again."))
+        elif self.booking_results:
+            # Later replies in the same call still need to know what was booked.
+            chat_ctx.add_message(role="system", content=(
+                "[Booking system] Already done earlier in this call: " + " ".join(self.booking_results)))
+        async for chunk in Agent.default.llm_node(self, chat_ctx, tools, model_settings):
+            yield chunk
+
+
+def build_agent(business: dict, call_id: int | None, session: AgentSession, on_auto_booking=None) -> Agent:
+    """Used by live calls and by the simulated-conversation tests, so both get the same agent."""
+    return Receptionist(business, call_id, session, on_auto_booking)
 
 
 server = AgentServer()
@@ -144,7 +201,7 @@ async def handle_call(ctx: JobContext) -> None:
             silence_task = None
 
     # 5. Start talking. Instructions and greeting both come from the database.
-    await session.start(room=ctx.room, agent=build_agent(business, call_id, session))
+    await session.start(room=ctx.room, agent=build_agent(business, call_id, session, recorder.on_auto_booking))
     await session.say(business["greeting"])
 
 
