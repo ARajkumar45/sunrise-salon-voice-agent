@@ -94,6 +94,34 @@ async def load_business(slug: str) -> dict | None:
     return {**business, "staff": staff, "services": services, "faqs": faqs}
 
 
+async def export_business(slug: str) -> dict | None:
+    """The business as a data file would describe it. The opposite of save_business."""
+    business = await load_business(slug)
+    if business is None:
+        return None
+    return {
+        "slug": business["slug"], "name": business["name"], "timezone": business["timezone"],
+        "address": business["address"], "slot_minutes": business["slot_minutes"],
+        "staff_word": business["staff_word"], "greeting": business["greeting"],
+        "free_cancellation_hours": business["free_cancellation_hours"],
+        "staff": [{"name": p["name"], "does": p["does"],
+                   "days": [WEEKDAYS[h["weekday"]] for h in p["hours"]],
+                   "hours": f"{p['hours'][0]['start_time']:%H:%M}-{p['hours'][0]['end_time']:%H:%M}"}
+                  for p in business["staff"] if p["hours"]],
+        "services": [{"name": s["name"], "staff": s["staff_name"], "price": s["price"]} for s in business["services"]],
+        "not_offered": business["not_offered"], "notes": business["notes"],
+        "faqs": [{"topic": f["topic"], "answer": f["answer"]} for f in business["faqs"]],
+    }
+
+
+async def call_belongs_to(call_id: int, slug: str) -> bool:
+    async with (await pool()).connection() as conn:
+        cur = await conn.execute(
+            "SELECT 1 FROM calls c JOIN businesses b ON b.id = c.business_id WHERE c.id = %s AND b.slug = %s",
+            (call_id, slug))
+        return await cur.fetchone() is not None
+
+
 async def save_business(data: dict) -> int:
     """Create or update a business from a data file. One transaction: all or nothing.
 
@@ -202,6 +230,16 @@ async def get_call_events(call_id: int) -> list[dict]:
     async with (await pool()).connection() as conn:
         cur = await conn.execute(
             "SELECT at, kind, data FROM call_events WHERE call_id = %s ORDER BY id", (call_id,))
+        return await cur.fetchall()
+
+
+async def latency_rows(slug: str, from_call: int = 0) -> list[dict]:
+    """The timing record of every reply, for calls with id >= from_call."""
+    async with (await pool()).connection() as conn:
+        cur = await conn.execute(
+            """SELECT e.call_id, e.data FROM call_events e
+               JOIN calls c ON c.id = e.call_id JOIN businesses b ON b.id = c.business_id
+               WHERE b.slug = %s AND e.kind = 'latency' AND c.id >= %s ORDER BY e.id""", (slug, from_call))
         return await cur.fetchall()
 
 

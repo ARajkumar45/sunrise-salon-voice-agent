@@ -1,0 +1,77 @@
+##### 3 calls at once, approved model order
+===== 3 CALLS AT ONCE =====
+caller 1: 5 of 5 questions answered
+caller 2: 5 of 5 questions answered
+caller 3: 5 of 5 questions answered
+rate-limit (429) errors seen by the agent: 13
+fallbacks to the next model:              5
+replies where every model failed:         0
+peak container CPU and memory now:
+app-agent-1  cpu=19.94%  mem=1015MiB / 11.68GiB
+app-web-1  cpu=0.11%  mem=62.01MiB / 11.68GiB
+app-caddy-1  cpu=0.00%  mem=60.82MiB / 11.68GiB
+app-db-1  cpu=0.01%  mem=71.21MiB / 11.68GiB
+app-tts-1  cpu=0.01%  mem=454.7MiB / 11.68GiB
+Reply latency over 15 replies in 3 calls
+(from the moment end of speech is detected to the first reply audio sent)
+ALL REPLIES (headline)             n=15  median 1.07s   p95 3.29s   worst 3.29s
+  replies that used a tool         n=2   median 2.10s   p95 3.29s   worst 3.29s
+  replies without a tool           n=13  median 1.06s   p95 1.47s   worst 1.47s
+Stages (all replies):
+  speech to text (Whisper)         n=15  median 0.24s   p95 0.30s   worst 0.30s
+  LLM, time to first token         n=15  median 0.49s   p95 0.71s   worst 0.71s
+  text to speech, first audio      n=15  median 0.33s   p95 1.01s   worst 1.01s
+As the caller feels it (from last word) n=15  median 1.55s   p95 3.77s   worst 3.77s
+##### 5 calls at once, approved model order
+===== 5 CALLS AT ONCE =====
+caller 1: 5 of 5 questions answered
+caller 2: 5 of 5 questions answered
+caller 3: 5 of 5 questions answered
+caller 4: 5 of 5 questions answered
+caller 5: 5 of 5 questions answered
+rate-limit (429) errors seen by the agent: 27
+fallbacks to the next model:              8
+replies where every model failed:         0
+peak container CPU and memory now:
+app-agent-1  cpu=21.56%  mem=1.164GiB / 11.68GiB
+app-web-1  cpu=0.13%  mem=63.03MiB / 11.68GiB
+app-caddy-1  cpu=0.00%  mem=60.82MiB / 11.68GiB
+app-db-1  cpu=6.83%  mem=77.3MiB / 11.68GiB
+app-tts-1  cpu=0.01%  mem=655.3MiB / 11.68GiB
+Reply latency over 25 replies in 5 calls
+(from the moment end of speech is detected to the first reply audio sent)
+ALL REPLIES (headline)             n=25  median 1.27s   p95 2.93s   worst 3.25s
+  replies that used a tool         n=5   median 2.72s   p95 3.25s   worst 3.25s
+  replies without a tool           n=20  median 1.17s   p95 1.85s   worst 1.90s
+Stages (all replies):
+  speech to text (Whisper)         n=25  median 0.24s   p95 0.30s   worst 0.30s
+  LLM, time to first token         n=25  median 0.49s   p95 1.15s   worst 1.16s
+  text to speech, first audio      n=25  median 0.40s   p95 1.45s   worst 1.55s
+As the caller feels it (from last word) n=25  median 1.75s   p95 3.41s   worst 3.74s
+##### two live calls racing for the same slot (tomorrow 11 AM with Anita)
+ id | customer_name | starts_ist | status | call_id 
+----+---------------+------------+--------+---------
+(0 rows)
+--- call 62
+ AGENT : Hello, thank you for calling Sunrise Salon. How can I help you today?
+ CALLER: I would like to book a haircut for men tomorrow at 11 a.m.
+   TOOL  check_availability({"date":"2026-11-27","service":"Haircut (men)","time":"11:00"}) -> 11 AM is FREE. Haircut (men) with Anita Rao on Friday 27 November (2026-11-27): free at 10 AM, 10:30 AM, 1
+ AGENT : Great, may I have your name please?
+ CALLER: My name is Mira, and my phone number is 9123456780.
+ AGENT : Let me read that back. Haircut (men) with Anita Rao on Friday 27 November at 11 AM, for Mira, phone number 9 1 2 3 4 5 6 7 8 0. Shall I book it?
+   TOOL  book_appointment({"service":"Haircut (men)","date":"2026-11-27","time":"11:00","customer_name":"Mira","customer_phone":"9123456780"}) -> 
+ CALLER: Yes, that is correct. Please go ahead.
+   TOOL  book_appointment (completed by code after caller's yes)({'caller_said': 'Yes, that is correct. Please go ahead.'}) -> BOOKED: Haircut (men) with Anita Rao on Friday 27 November at 11 AM. Price
+ AGENT : Your haircut for men with Anita Rao is booked on Friday 27 November at 11 AM, and the price is Rs 400.
+--- call 63
+ AGENT : Hello, thank you for calling Sunrise Salon. How can I help you today?
+ CALLER: I would like to book a haircut for men tomorrow at 11 a.m.
+   TOOL  check_availability({"date":"2026-11-27","service":"Haircut (men)","time":"11:00"}) -> 11 AM is FREE. Haircut (men) with Anita Rao on Friday 27 November (2026-11-27): free at 10 AM, 10:30 AM, 1
+ AGENT : Great, a men’s haircut with Anita Rao at 11 am on Friday costs four hundred rupees. May I have your name, please?
+ CALLER: My name is Arjun, and my phone number is 9-8-7-6-5-4-3-2-1-0.
+ AGENT : Let me read that back. Haircut (men) with Anita Rao on Friday 27 November at 11 AM, for Arjun, phone number 9 8 7 6 5 4 3 2 1 0. Shall I book it?
+   TOOL  book_appointment({"service":"Haircut (men)","date":"2026-11-27","time":"11:00","customer_name":"Arjun","customer_phone":"9876543210"}) -> 
+   TOOL  book_appointment (completed by code after caller's yes)({'caller_said': 'Yes, that is correct. Please go ahead.'}) -> NOT booked. Friday 27 November at 11 AM has just been taken. Check availab
+ CALLER: Yes, that is correct. Please go ahead.
+   TOOL  check_availability({"service":"Haircut (men)","date":"2026-11-27","time":null}) -> Haircut (men) with Anita Rao on Friday 27 November (2026-11-27): free at 10 AM, 10:30 AM, 11:30 AM, 12 PM, 12
+ AGENT : I’m sorry, the 11 am slot just got taken; the next free times on Friday are 10 am, 10:30 am, 11:30 am, 12 pm, 12:30 pm, 1 pm or 1:30 pm.

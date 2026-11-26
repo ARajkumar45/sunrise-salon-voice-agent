@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from livekit import api
 
 from app import db
+from app.admin import router as admin_router
 
 load_dotenv()
 
@@ -35,6 +36,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Voice receptionist", lifespan=lifespan)
+app.include_router(admin_router)
 
 
 @app.get("/")

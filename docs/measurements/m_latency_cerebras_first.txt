@@ -1,0 +1,14 @@
+===== LATENCY REPORT (calls from id 47) =====
+Reply latency over 22 replies in 7 calls
+(from the moment end of speech is detected to the first reply audio sent)
+
+ALL REPLIES (headline)             n=22  median 1.03s   p95 1.64s   worst 1.87s
+  replies that used a tool         n=9   median 1.49s   p95 1.87s   worst 1.87s
+  replies without a tool           n=13  median 0.90s   p95 1.19s   worst 1.19s
+
+Stages (all replies):
+  speech to text (Whisper)         n=22  median 0.24s   p95 0.31s   worst 0.34s
+  LLM, time to first token         n=20  median 0.43s   p95 0.59s   worst 0.67s
+  text to speech, first audio      n=22  median 0.24s   p95 0.35s   worst 0.50s
+
+As the caller feels it (from last word) n=22  median 1.51s   p95 2.12s   worst 2.35s

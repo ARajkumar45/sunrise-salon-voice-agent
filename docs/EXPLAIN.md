@@ -509,3 +509,89 @@ Test count now: 42 without an LLM, 25 simulated conversations.
 > one load command, and the garage's page was taking calls 16 seconds later with no code change
 > and no restart. The agent is built per call from that business's rows, and its tools are
 > created with the business fixed inside them, so there is no way to ask for another business."
+
+---
+
+## Milestone 5: measurements (Thu 26 Nov, evening)
+
+All numbers are from real voice calls to the deployed agent, made by the scripted caller
+running on the server. Raw outputs are in `docs/measurements/`.
+
+### How to reproduce (on the server, in the project folder)
+```bash
+sh scripts/measure_latency.sh        # 7 calls, 22 replies, prints the latency report
+sh scripts/concurrent_calls.sh 3     # 3 calls at once, prints rate-limit errors and latency
+docker compose --profile test run --rm tests            # all tests
+docker compose exec web python -m app.manage latency sunrise-salon   # report over all calls
+```
+
+### Latency: 22 replies, every reply counted, tool replies included
+Measured from the moment end of speech is detected to the first reply audio sent.
+
+| Model order | Median | p95 | Replies with a tool (9) | Replies without (13) |
+|---|---|---|---|---|
+| Groq first, then Cerebras (the approved order) | 1.43 s | 2.57 s | median 1.94 s | median 1.13 s |
+| Cerebras first, then Groq | **1.03 s** | **1.64 s** | median 1.49 s | median 0.90 s |
+
+Target: 1.2 s median, 2.0 s p95. Cerebras first meets it. Groq first does not.
+
+Stages, Cerebras first: speech to text 0.24 s, LLM first token 0.43 s, text to speech first
+audio 0.24 s (medians). The stages do not add up to the total because a reply that uses a
+tool makes two LLM requests, and the first sentence has to be complete before Piper speaks it.
+
+What the caller feels (from their last word, which adds the 0.45 s the voice detector waits):
+median 1.51 s with Cerebras first, 1.91 s with Groq first.
+
+### Several calls at once
+Each caller asks five questions; one of the five needs a tool.
+
+| Calls at once | Order | All answered? | Rate-limit errors | Median | p95 |
+|---|---|---|---|---|---|
+| 3 | Groq first | yes (15 of 15) | 13, absorbed by 5 fallbacks | 1.07 s | 3.29 s |
+| 5 | Groq first | yes (25 of 25) | 27, absorbed by 8 fallbacks | 1.27 s | 2.93 s |
+| 3 | Cerebras first | yes (15 of 15) | 0 | 1.07 s | 3.63 s |
+| 5 | Cerebras first | yes (25 of 25) | 0 | 1.22 s | 2.77 s |
+| 8 | Cerebras first | yes (40 of 40) | 79 | 3.11 s | 15.1 s |
+
+What this says, honestly:
+- **No call failed and no reply was lost at any level tested.** "Every model failed" was 0 in
+  every run.
+- **Up to 5 calls at once the median stays near target, but p95 does not.** Tool replies
+  slow to 2.1 to 2.9 s under load.
+- **8 at once is too many.** The 79 errors were almost certainly Groq's speech-to-text limit
+  of 20 requests a minute (8 callers asked 40 questions in about a minute, and no LLM fallback
+  was triggered). I could not confirm it from the logs because they were cleared when the
+  agent restarted. Replies waited for retries, up to 15 s.
+- The server itself was not the limit: the agent used 20 to 30% of the CPU and 1.5 GB of 12 GB.
+- The scripted callers ran on the same server as the agent, so they competed for CPU. Real
+  callers would not. The load numbers are therefore slightly pessimistic.
+
+So on free tiers this deployment serves about 3 to 5 simultaneous callers, and the ceiling is
+speech to text requests per minute, not the machine.
+
+### Two live calls racing for the same slot
+Two scripted callers asked for the same slot (Friday 11 AM with Anita) at the same time. Both
+were read the details back. One was booked. The other heard "I'm sorry, the 11 am slot just got
+taken" and was offered the other free times. The database had exactly one booking for the slot.
+Transcripts are in `docs/measurements/m_load_groq_first.txt`.
+
+### Tests
+59 passed in the last complete run (35 without an LLM, 24 conversations). Since then 7
+isolation tests and 1 more conversation were added: 42 without an LLM pass, and the new
+conversation passes. A final complete run is part of Friday's review.
+
+### Honest notes
+- 22 replies is just over the 20 the assignment asks for. p95 over 22 values is the second
+  slowest reply, so one bad reply moves it a lot.
+- The scripted caller uses a synthetic voice with clean audio. Real callers with noise or
+  accents may get slower or wrong transcripts.
+- Interruption was measured in Milestone 1 (agent stops 0.22 to 0.26 s after the caller starts
+  speaking; about 0.5 s as heard by the caller) and not re-measured here.
+
+### How to explain this on the review call
+> "I measure latency inside the agent for every reply: the clock starts when the voice detector
+> decides the caller has finished and stops when the first audio is sent. Over 22 replies,
+> including the ones that call tools, the median is about 1.0 seconds and the 95th percentile
+> 1.6. With several calls at once nothing fails, but the slowest replies go over 2 seconds,
+> and the real ceiling is the free speech to text limit of 20 requests a minute, about 3 to 5
+> callers. In production I would pay for speech to text or host Whisper myself."
