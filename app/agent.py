@@ -29,7 +29,7 @@ from app.tts_piper import PiperTTS
 load_dotenv()
 log = logging.getLogger("receptionist")
 
-AGENT_NAME = "receptionist"
+AGENT_NAME = os.environ.get("AGENT_NAME", "receptionist")  # must match app/web.py
 STT_MODEL = "whisper-large-v3-turbo"  # open model (OpenAI Whisper), served by Groq
 # Open-weight LLMs, tried in this order. Each entry is "provider:model". If one is rate
 # limited or slow, the next is used (see build_llm). Cerebras entries are skipped when there
@@ -38,7 +38,7 @@ STT_MODEL = "whisper-large-v3-turbo"  # open model (OpenAI Whisper), served by G
 # Qwen was the least reliable (it once claimed a booking it never looked up): last resort.
 LLM_MODELS = os.environ.get(
     "LLM_MODELS",
-    "groq:openai/gpt-oss-120b,cerebras:gpt-oss-120b,groq:openai/gpt-oss-20b,groq:qwen/qwen3.8-27b",
+    "cerebras:gpt-oss-120b,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,groq:qwen/qwen3.8-27b",
 ).split(",")
 # How hard the gpt-oss models think before answering: "low" is fastest, "medium" follows rules better.
 LLM_REASONING = os.environ.get("LLM_REASONING", "medium")

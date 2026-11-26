@@ -67,6 +67,13 @@ async def get_business_row(slug: str) -> dict | None:
         return await cur.fetchone()
 
 
+async def first_business_slug() -> str | None:
+    async with (await pool()).connection() as conn:
+        cur = await conn.execute("SELECT slug FROM businesses ORDER BY id LIMIT 1")
+        row = await cur.fetchone()
+        return row["slug"] if row else None
+
+
 async def load_business(slug: str) -> dict | None:
     """Everything the agent needs to know about one business, read fresh for each call."""
     business = await get_business_row(slug)

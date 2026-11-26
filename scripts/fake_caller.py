@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 from livekit import api, rtc
 
 load_dotenv()
-AGENT_NAME = "receptionist"
+AGENT_NAME = os.environ.get("AGENT_NAME", "receptionist")
 LOUD = 500  # audio level above which we count the agent as speaking
 
 

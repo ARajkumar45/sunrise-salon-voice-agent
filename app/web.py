@@ -20,8 +20,7 @@ from app.admin import router as admin_router
 
 load_dotenv()
 
-AGENT_NAME = "receptionist"
-DEFAULT_BUSINESS = "sunrise-salon"
+AGENT_NAME = os.environ.get("AGENT_NAME", "receptionist")  # the agent that LiveKit sends into each call
 STATIC = Path(__file__).parent / "static"
 
 
@@ -40,8 +39,12 @@ app.include_router(admin_router)
 
 
 @app.get("/")
-def home() -> RedirectResponse:
-    return RedirectResponse(f"/call/{DEFAULT_BUSINESS}")
+async def home() -> RedirectResponse:
+    """The bare address goes to the first business's call page."""
+    slug = await db.first_business_slug()
+    if slug is None:
+        raise HTTPException(404, "No business has been set up yet")
+    return RedirectResponse(f"/call/{slug}")
 
 
 @app.get("/healthz")
