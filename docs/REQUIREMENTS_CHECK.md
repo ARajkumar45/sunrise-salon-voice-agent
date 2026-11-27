@@ -120,7 +120,7 @@ Wording varies between runs because an LLM writes the sentences; the tests check
 | Live URL of the Sunrise Salon call page | **Done** | https://129-225-94-107.sslip.io/call/sunrise-salon |
 | Dashboard login, if built | **Done** | Owner page key is sent in the email, not stored in the repository. |
 | Public GitHub repo | **Done** | https://github.com/ARajkumar45/sunrise-salon-voice-agent |
-| `docker compose up` runs everything | **Done**, one limit | Fresh clone on the server: 5 containers up, both businesses seeded, a voice call answered, 42 tests passed (`docs/measurements/clean_clone_test.txt`). Not tried on a second physical machine. |
+| `docker compose up` runs everything | **Done**, one limit | Fresh clone of the submitted code on the server (commit `dddd503`), as a separate stack on other ports: 5 containers up, both businesses seeded, the root address opens Sunrise Salon, a voice call answered, 74 non-LLM tests passed (`docs/measurements/clean_clone_test_final.txt`). Not tried on a second physical machine. |
 | `.env.example` | **Done** | In the repository root. |
 | README: architecture, framework and models and where they run, latency numbers, what's missing | **Done** | `README.md` |
 | Demo video, 5 minutes max, Google Drive with link access | **Not done** | Raj records it. Shot list: `docs/DEMO_SCRIPT.md`. |

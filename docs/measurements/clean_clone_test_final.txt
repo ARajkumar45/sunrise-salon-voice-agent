@@ -1,0 +1,18 @@
+### CLEAN CLONE (repeated on the submitted code)
+cloned commit: dddd503 Audit against the brief: reschedule and next Tuesday proven; ambiguous and misspelt service names; opening times; no salon number in the shared rules; one-page handover; stale numbers corrected; 103 tests
+docker compose up exit code: 0
+seconds from 'docker compose up' to healthy web (images partly cached): 181
+agent running;caddy running;db running;tts running;web running;
+call page: 200  businesses seeded: {"name":"Sunrise Salon"} {"name":"Greenline Auto Care"}  root redirects to: http://localhost:8100/call/sunrise-salon
+greeting heard 1.80s after pressing Call
+mens_haircut.wav: reply heard 1.38s after the question ended
+sunday.wav: reply heard 1.11s after the question ended
+04:14:34  AGENT : Hello, thank you for calling Sunrise Salon. How can I help you today?
+04:14:37  CALLER: How much is a haircut for men?
+04:14:42  AGENT : A men's haircut is Rs 400, done by Anita Rao.
+04:14:42    (reply started 0.667s after end of speech was detected, 1.147s after the caller's last word: stt 0.301s, llm 0.477s, tts 0.179s)
+04:14:45  CALLER: Are you open on Sunday?
+04:14:49  AGENT : We are closed on Sundays. Is there anything else I can assist you with?
+04:14:49    (reply started 0.519s after end of speech was detected, 1.0s after the caller's last word: stt 0.245s, llm 0.419s, tts 0.094s)
+74 passed, 29 deselected in 35.61s
+clean stack removed; live stack: agent running;caddy running;db running;tts running;web running;

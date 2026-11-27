@@ -100,9 +100,10 @@ businesses are loaded on first start.
 
 Verified from a fresh `git clone` on the server (as a second, separate stack on other ports):
 all five containers started, both businesses were seeded, a scripted voice call was answered
-correctly, and the 42 non-LLM tests passed. Output: `docs/measurements/clean_clone_test.txt`.
-With images already built, the stack was healthy 9 seconds after `docker compose up`; the first
-build downloads about 3 GB of images and takes several minutes. Not verified on a second
+correctly, and the 74 non-LLM tests passed. This was repeated on the submitted code (commit
+`dddd503`): `docs/measurements/clean_clone_test_final.txt`. With the base images already on
+the machine, `docker compose up --build` took about 3 minutes to a healthy stack; a first
+build also downloads about 3 GB of images. Not verified on a second
 physical machine or on Windows.
 
 Useful commands (put `docker compose exec web` in front):
