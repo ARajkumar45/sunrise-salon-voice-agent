@@ -13,7 +13,7 @@ Open https://129-225-94-107.sslip.io/call/sunrise-salon on your laptop, then rep
 6. **Phone numbers.** Does it hear your 10 digits correctly when you say them at normal speed? If not, tell me what it heard.
 7. **The voice.** It is Piper's `en_US-lessac-medium`. Tell me if it is hard to understand at any point.
    Also listen to the read-back: it is now made in two pieces ("Let me read that back." then the rest). Is the join natural?
-9. **Talk over the greeting (added Fri 27 Nov).** Press Call and start speaking in the first second or two. Today the agent finishes about 3 seconds of its greeting and does not hear what you said in that time (the framework's echo guard). Tell me if you want that guard shortened; item 2 (echo on laptop speakers) decides whether it is safe.
+9. **Talk over the greeting (added Fri 27 Nov).** Press Call and start speaking in the first second or two. Today the agent finishes about 3 seconds of its greeting and does not hear what you said in that time (the framework's echo guard). I kept that guard on purpose. If item 2 (laptop speakers) shows no echo at all, tell me and I can shorten it.
 8. **The second business:** https://129-225-94-107.sslip.io/call/greenline-auto-care, ask "How much is an oil change?"
 
 If anything goes wrong, tell me roughly when. I can pull the full log of that call.

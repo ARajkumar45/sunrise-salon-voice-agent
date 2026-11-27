@@ -423,7 +423,7 @@ What would change, in order:
   that time are not heard (the framework's echo guard, see Interruptions). A caller who starts
   talking at once has to repeat themselves. It can be shortened with one setting
   (`aec_warmup_duration`), but only after checking by ear that a laptop loudspeaker does not
-  then cut the greeting off. *(pending: Raj's decision after the human voice check.)*
+  then cut the greeting off. Decision: kept. If the guard is too short, the agent can cut off or answer its own greeting on every call made with loudspeakers, which is worse than a caller repeating one sentence.
 - **No limit on how often the call page can ask for a call.** Anyone could start many calls
   and use up the free quotas. Production needs a rate limit per address in front of `/api/token`.
 - **Changing a booking needs only the phone number it was made with.** A caller who knows

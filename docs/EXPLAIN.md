@@ -741,7 +741,13 @@ is true for every reply after that.
 
 It is one setting (`aec_warmup_duration`). I did not change it because the risk it guards
 against (echo on laptop speakers) is exactly what I cannot test without a human, and Raj's
-voice check has not happened yet. It is listed in the README's known gaps. **Raj to decide.**
+voice check has not happened yet. It is listed in the README's known gaps.
+
+**Decision (Raj asked me to choose): keep the 3 seconds.** The two ways of being wrong are not
+equal. If the guard is kept and was not needed, a caller who talks in the first 3 seconds
+repeats one sentence. If it is shortened and was needed, the agent cuts off or answers its
+own greeting on every call made with loudspeakers. I cannot hear the call, so I chose the
+smaller harm. If Raj's loudspeaker check shows no echo, shortening it is a one-line change.
 
 ### Things found and deliberately left, all listed in the README's known gaps
 - One shared owner key opens every business (already listed; now says what that means).

@@ -18,7 +18,7 @@ Status words: **Done** (run and proven), **Partial** (works with a stated limit)
 | Requirement | Status | Evidence |
 |---|---|---|
 | Opens the call page, presses Call, talks from the browser | **Done**, same limit as above | Chrome test above. The page is one HTML file, `app/static/call.html`. |
-| Stops talking within half a second when interrupted | **Done**, at the limit, **except during the first 3 s of the greeting** (the framework's echo guard; the caller is not heard then. Raj to decide, see Still open) | Agent's own clock: stopped 0.214, 0.215, 0.215 s after the caller began speaking. Heard at the caller's end: 0.46, 0.47, 0.52 s (one of three just over). `docs/measurements/interruption_silence_live_change.txt` |
+| Stops talking within half a second when interrupted | **Done**, at the limit, **except during the first 3 s of the greeting** (the framework's echo guard; the caller is not heard then. Kept on purpose, see `docs/EXPLAIN.md`) | Agent's own clock: stopped 0.214, 0.215, 0.215 s after the caller began speaking. Heard at the caller's end: 0.46, 0.47, 0.52 s (one of three just over). `docs/measurements/interruption_silence_live_change.txt` |
 | Handles long silence politely | **Done** | Check-in at 14 s and 26 s, goodbye at 39 s, call ended at 45 s. Same file. |
 | Reply starts within 1.2 s median | **Done** | 0.81 s over 66 replies (1.04 s before the two latency fixes of 27 Nov); 0.76 s in a repeat run on the submitted code (`docs/measurements/latency_final_66_replies.txt`). `docs/measurements/latency_after_fixes_66_replies.txt` |
 | Reply starts within 2.0 s at the 95th percentile | **Done** for single calls and for 3 at once; not shown for more | 1.74 s over 66 replies (worst 1.90 s); 1.71 s in the repeat run on the submitted code, where one reply of 66 took 2.02 s. With 3 calls at once p95 was 1.38 s over 15 replies, which is too few for a firm p95. 5 and 8 at once were measured before the latency fixes and went above 2.0 s. `docs/measurements/checks_after_fixes.txt` |
@@ -168,6 +168,5 @@ the last (see the interruption line above).
 4. Confirm the Cerebras spend and that automatic top-up is off.
 5. Decide whether `APPROVAL_PROMPT.md` stays in the public repo.
 6. Record the demo video and add its link to the README.
-7. Decide whether callers may interrupt the greeting in its first 3 seconds. Try it on the
-   live page with laptop speakers: if the greeting is not cut off by its own echo with the
-   guard shortened, shorten it (`aec_warmup_duration` in `app/agent.py`).
+7. Optional: the greeting's 3-second echo guard was kept. If your loudspeaker check shows no
+   echo at all, it can be shortened with one line (`aec_warmup_duration` in `app/agent.py`).
