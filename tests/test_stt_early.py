@@ -38,12 +38,14 @@ def silence(seconds: float) -> bytes:
     return b"\x00" * (int(RATE * seconds) * 2)
 
 
-async def transcripts_for(audio: bytes) -> tuple[list[str], FakeWhisper]:
+async def transcripts_for(audio: bytes, whisper=None, on_lost_turn=None) -> tuple[list[str], FakeWhisper]:
     """Play audio into the early speech to text at real speed; return the final transcripts."""
-    whisper = FakeWhisper()
+    whisper = whisper or FakeWhisper()
     early = EarlySTT(wrapped=whisper,
                      early_vad=silero.VAD.load(min_silence_duration=EARLY_SILENCE),
                      turn_vad=silero.VAD.load(min_silence_duration=0.45))
+    if on_lost_turn:
+        early.on_lost_turn = on_lost_turn
     stream = early.stream()
     finals: list[str] = []
 
@@ -98,3 +100,18 @@ async def test_many_pauses_do_not_cause_many_requests():
     assert len(finals) == 1
     assert len(whisper.request_seconds) <= 3  # two thrown away at most, then one for the whole turn
     assert whisper.request_seconds[-1] == max(whisper.request_seconds)  # the last one had everything
+
+
+async def test_a_failed_transcription_loses_one_turn_but_not_the_call():
+    class FailsOnce(FakeWhisper):
+        async def _recognize_impl(self, buffer, *, language=None, conn_options=None):
+            self.request_seconds.append(buffer.duration)
+            if len(self.request_seconds) == 1:
+                raise RuntimeError("speech to text is down")
+            return await super()._recognize_impl(buffer, language=language, conn_options=conn_options)
+
+    lost: list[Exception] = []
+    audio = recording("sunday.wav") + silence(1.5) + recording("where.wav") + silence(1.5)
+    finals, whisper = await transcripts_for(audio, FailsOnce(), on_lost_turn=lost.append)
+    assert len(lost) == 1    # the first question was reported as lost...
+    assert len(finals) == 1  # ...and the second was still heard

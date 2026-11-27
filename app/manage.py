@@ -23,6 +23,10 @@ from app.prompt import build_instructions
 load_dotenv()
 
 
+def seconds(value) -> str:
+    return "not recorded" if value is None else f"{value}s"
+
+
 def describe_event(event: dict) -> str:
     kind, data = event["kind"], event["data"]
     if kind == "said":
@@ -33,7 +37,8 @@ def describe_event(event: dict) -> str:
     if kind == "latency":
         return (f"  (reply started {data['reply_latency_s']}s after end of speech was detected, "
                 f"{data.get('since_last_word_s')}s after the caller's last word: "
-                f"stt {data['stt_s']}s, llm {data['llm_first_token_s']}s, tts {data['tts_first_audio_s']}s"
+                f"stt {seconds(data['stt_s'])}, llm {seconds(data['llm_first_token_s'])}, "
+                f"tts {seconds(data['tts_first_audio_s'])}"
                 f"{', used a tool' if data['used_tool'] else ''})")
     return f"  [{kind}] {data}"
 

@@ -117,7 +117,9 @@ reply. That is why the measurement was extended beyond the assignment's minimum 
 ## Honest reading
 
 **Against the assignment's targets** (1.2 s median, 2.0 s p95, its own definition): met, at
-0.81 s and 1.74 s over 66 replies. No reply of the 66 took longer than 2.0 s (worst 1.90 s).
+0.81 s and 1.74 s over 66 replies, with no reply over 2.0 s (worst 1.90 s). A repeat run on the
+submitted code gave 0.76 s and 1.71 s, with one reply of 66 at 2.02 s; as heard, 1.48 s median
+and 2.40 s p95 (`docs/measurements/latency_final_66_replies.txt`).
 
 **Against what the industry publishes**, using our like-for-like "as heard" figure of 1.50 s median:
 - It is **at Daily and Pipecat's 1,500 ms target**, and still **slower than Twilio's**

@@ -55,6 +55,8 @@ SILENCE_BEFORE_CHECK_IN = 15.0
 SILENCE_BETWEEN_CHECK_INS = 10.0
 CHECK_INS = ["Are you still there?", "Hello? I can't hear anything. Are you still on the line?"]
 GOODBYE = "I'll end the call for now. Please call again any time. Goodbye."
+# Said when speech to text failed for a caller turn, so the caller is not left in silence.
+DID_NOT_CATCH = "Sorry, I didn't catch that. Could you say it again?"
 
 
 
@@ -160,11 +162,12 @@ async def handle_call(ctx: JobContext) -> None:
     # 2. Build the voice pipeline.
     whisper = groq.STT(model=STT_MODEL, language="en")
     models = build_llm()
+    # Whisper starts on the recording before the end-of-speech wait is over.
+    early_stt = EarlySTT(wrapped=whisper, early_vad=ctx.proc.userdata["early_vad"],
+                         turn_vad=ctx.proc.userdata["vad"])
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
-        # Whisper starts on the recording before the end-of-speech wait is over.
-        stt=EarlySTT(wrapped=whisper, early_vad=ctx.proc.userdata["early_vad"],
-                     turn_vad=ctx.proc.userdata["vad"]),
+        stt=early_stt,
         llm=models,
         tts=PiperTTS(),
         turn_handling={
@@ -183,6 +186,12 @@ async def handle_call(ctx: JobContext) -> None:
     whisper.on("metrics_collected", recorder.on_stt_metrics)
     models.on("metrics_collected", recorder.on_llm_metrics)
     ctx.add_shutdown_callback(recorder.finish)
+
+    def on_lost_turn(error: Exception) -> None:
+        recorder.write("error", {"error": f"speech to text failed for one caller turn: {error}"[:500]})
+        session.say(DID_NOT_CATCH)
+
+    early_stt.on_lost_turn = on_lost_turn
 
     # 4. Long silence: check in politely, then end the call.
     silence_task: asyncio.Task | None = None

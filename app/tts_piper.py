@@ -22,7 +22,7 @@ import uuid
 import wave
 
 import aiohttp
-from livekit.agents import APIConnectionError, APIConnectOptions, tts
+from livekit.agents import APIConnectionError, APIConnectOptions, APITimeoutError, tts
 from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS
 
 # The Piper voice we ship (en_US-lessac-medium) produces 22.05 kHz mono audio.
@@ -45,6 +45,12 @@ def first_clause_and_rest(sentence: str) -> list[str]:
             if len(sentence) - cut >= 20:
                 return [sentence[:cut].strip(), sentence[cut:].strip()]
     return [sentence]
+
+
+def is_speakable(text: str) -> bool:
+    """False for text with no letter or digit, such as "..." or a lone dash.
+    Piper answers such text with an error, so we play a moment of silence instead."""
+    return re.search(r"\w", text) is not None
 
 
 class PiperTTS(tts.TTS):
@@ -78,6 +84,8 @@ class PiperStream(tts.ChunkedStream):
 
     async def speak(self, text: str) -> bytes:
         """Ask Piper for one piece of text. Returns the sound itself, without the WAV header."""
+        if not is_speakable(text):
+            return b"\x00" * (PIPER_SAMPLE_RATE // 10 * 2)  # 0.1 s of silence
         piper: PiperTTS = self._tts  # type: ignore[assignment]
         async with piper.http().post(piper.base_url + "/synthesize", json={"text": text},
                                      timeout=aiohttp.ClientTimeout(total=20)) as response:
@@ -97,6 +105,8 @@ class PiperStream(tts.ChunkedStream):
         try:
             for piece in pieces:
                 output_emitter.push(await piece)
+        except asyncio.TimeoutError as error:
+            raise APITimeoutError("Piper TTS took too long") from error
         except aiohttp.ClientError as error:
             raise APIConnectionError(f"Piper TTS request failed: {error}") from error
         finally:

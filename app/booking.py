@@ -16,6 +16,7 @@ from psycopg.errors import UniqueViolation
 from app import db
 
 LOOK_AHEAD_DAYS = 14  # how far ahead we search when a requested day has nothing free
+MAX_DAYS_AHEAD = 365  # a date further away than this is almost certainly a wrong year
 
 
 class BookingError(Exception):
@@ -123,8 +124,14 @@ async def next_free_days(business: dict, service: dict, after: dt.date, now: dt.
 
 # ---------- book, move, cancel ----------
 
+def check_day(business: dict, day: dt.date, now: dt.datetime) -> None:
+    if day > now.date() + dt.timedelta(days=MAX_DAYS_AHEAD):
+        raise BookingError(f"{day.isoformat()} is more than a year away. Check the year and use a date from the Dates list.")
+
+
 def check_slot(business: dict, service: dict, day: dt.date, time: dt.time, now: dt.datetime) -> dt.datetime:
     """Return the slot if it is a real, future slot for this service. Otherwise explain why not."""
+    check_day(business, day, now)
     slot = dt.datetime.combine(day, time, ZoneInfo(business["timezone"]))
     if slot not in slots_on(business, service, day):
         raise BookingError(
@@ -173,12 +180,13 @@ async def bookings_for_phone(business: dict, customer_phone: str, now: dt.dateti
                  "free_to_cancel": r["starts_at"] - now >= free_notice} for r in await cur.fetchall()]
 
 
-async def get_own_booking(conn, business: dict, booking_id: int, customer_phone: str) -> dict:
-    """Fetch a booking only if it belongs to this business AND this phone number."""
+async def get_own_booking(conn, business: dict, booking_id: int, customer_phone: str, now: dt.datetime) -> dict:
+    """Fetch an upcoming booking only if it belongs to this business AND this phone number."""
     cur = await conn.execute(
         """SELECT b.*, s.name AS service_name FROM bookings b JOIN services s ON s.id = b.service_id
-           WHERE b.id = %s AND b.business_id = %s AND b.customer_phone = %s AND b.status = 'booked'""",
-        (booking_id, business["id"], clean_phone(customer_phone)))
+           WHERE b.id = %s AND b.business_id = %s AND b.customer_phone = %s AND b.status = 'booked'
+             AND b.starts_at > %s""",
+        (booking_id, business["id"], clean_phone(customer_phone), now))
     row = await cur.fetchone()
     if row is None:
         raise BookingError("No active booking with that number for that phone. Look up the caller's bookings first.")
@@ -188,9 +196,10 @@ async def get_own_booking(conn, business: dict, booking_id: int, customer_phone:
 async def describe_own_booking(business: dict, booking_id: int, customer_phone: str,
                                now: dt.datetime | None = None) -> dict:
     """What a booking is, and whether cancelling it right now would be free. Changes nothing."""
+    now = now or now_at(business)
     async with (await db.pool()).connection() as conn:
-        row = await get_own_booking(conn, business, booking_id, customer_phone)
-    notice = row["starts_at"] - (now or now_at(business))
+        row = await get_own_booking(conn, business, booking_id, customer_phone, now)
+    notice = row["starts_at"] - now
     return {"service": row["service_name"],
             "when": say_slot(row["starts_at"].astimezone(ZoneInfo(business["timezone"]))),
             "free_to_cancel": notice >= dt.timedelta(hours=business["free_cancellation_hours"])}
@@ -201,11 +210,15 @@ async def reschedule(business: dict, booking_id: int, customer_phone: str, new_d
     now = now or now_at(business)
     try:
         async with (await db.pool()).connection() as conn:
-            row = await get_own_booking(conn, business, booking_id, customer_phone)
+            row = await get_own_booking(conn, business, booking_id, customer_phone, now)
             service = find_service(business, row["service_name"])
             slot = check_slot(business, service, parse_date(new_date), parse_time(new_time), now)
             # One UPDATE: the old slot is freed and the new one taken together, or nothing changes.
-            await conn.execute("UPDATE bookings SET starts_at = %s WHERE id = %s", (slot, row["id"]))
+            # "AND status = 'booked'": if it was cancelled a moment ago, it must not be moved.
+            cur = await conn.execute(
+                "UPDATE bookings SET starts_at = %s WHERE id = %s AND status = 'booked'", (slot, row["id"]))
+            if cur.rowcount == 0:
+                raise BookingError("That booking has just been cancelled, so it was not moved.")
     except UniqueViolation:
         raise BookingError("That new time has just been taken. The original booking is unchanged. "
                            "Check availability again and offer another time.") from None
@@ -216,7 +229,7 @@ async def reschedule(business: dict, booking_id: int, customer_phone: str, new_d
 async def cancel(business: dict, booking_id: int, customer_phone: str, now: dt.datetime | None = None) -> dict:
     now = now or now_at(business)
     async with (await db.pool()).connection() as conn:
-        row = await get_own_booking(conn, business, booking_id, customer_phone)
+        row = await get_own_booking(conn, business, booking_id, customer_phone, now)
         await conn.execute("UPDATE bookings SET status = 'cancelled' WHERE id = %s", (row["id"],))
     notice = row["starts_at"] - now
     free = notice >= dt.timedelta(hours=business["free_cancellation_hours"])

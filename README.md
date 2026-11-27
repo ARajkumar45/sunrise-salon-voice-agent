@@ -124,11 +124,23 @@ into "that slot has just been taken" and the agent offers other times. Moving a 
 `UPDATE`, protected by the same index. There is no "check, then insert" gap to slip through,
 and nothing the LLM says or does can get around it.
 
+The index works per staff member and start time, so it only holds while the slot grid stays
+put. An owner edit that would leave an upcoming booking without a slot (renaming or removing
+its staff member, moving its service to someone else, changing the hours, the working days or
+the slot length around it) is therefore refused as a whole, with a message naming the
+bookings (`db.bookings_that_no_longer_fit`). Before this check, renaming a staff member made
+their booked slots look free.
+
 ### Interruptions
 Silero VAD keeps listening while the agent speaks. After 0.2 s of caller speech the framework
 cancels the LLM and Piper, discards queued audio, and keeps only what was actually spoken in
 the conversation history. If no words follow (a cough), the agent resumes. The browser's echo
 cancellation keeps the agent from hearing itself.
+
+One exception, a framework default we kept: during the first 3 seconds of the greeting the
+agent cannot be interrupted and does not take in what the caller says. LiveKit does this so
+that the agent's own voice, coming back through the caller's loudspeaker before echo
+cancellation has settled, cannot cut the greeting off. See Known gaps.
 
 ### How business data reaches the agent
 The page URL carries the business slug. The server puts it into the signed LiveKit token.
@@ -140,7 +152,15 @@ every call, a data change is used by the very next call with no redeploy.
 ### Things the code does so they do not depend on the LLM
 - **Availability** always comes from a tool that reads the database.
 - **The booking read-back is spoken by the code, word for word**, including the phone number
-  digit by digit. A plain "yes" from the caller then completes the booking in code.
+  digit by digit. A plain "yes" from the caller then completes the booking in code. The
+  read-back does not stay open: "no", "wait" or "let me think" drops it at once, and so does a
+  second answer that is not a yes, so an "okay, thanks" later in the call books nothing.
+  (One exception: if the agent itself has just offered to book that exact time and the caller
+  answers with a plain yes that contains no digits, the booking is made without a second
+  read-back.)
+- **Owner edits are checked before they are saved** (`db.check_business_data`): a slot length
+  of 0, a misspelt timezone, hours that end before they start, a service naming nobody, and
+  similar mistakes are refused with a plain message, because each of them would break calls.
 - **Move and cancel** are refused until the caller has spoken after their booking was looked up.
 - **Privacy:** no tool returns another customer's name or number; availability lists free times
   only; a booking can be fetched only with the phone number it was made with, inside its business.
@@ -184,6 +204,8 @@ earlier, at the caller's last word:
 |---|---|---|
 | From the caller's last word to first audio sent (adds the 0.45 s end-of-speech wait) | 1.29 s | 2.22 s |
 | As heard at the caller's end (the scripted caller's own clock) | 1.50 s | 2.35 s |
+
+**Repeat run on the submitted code** (after the edge-case fixes of 27 Nov, same script, 66 replies, no rate-limit errors): median 0.76 s, p95 1.71 s, worst 2.02 s by the assignment's definition (one reply of the 66 was over 2.0 s); 1.24 s / 2.19 s from the caller's last word; 1.48 s / 2.40 s as heard. Three calls at once: 15 of 15 answered, median 0.75 s, p95 1.43 s. `docs/measurements/latency_final_66_replies.txt`, `docs/measurements/edge_cases_and_final_checks.txt`.
 
 By that measure the agent is typical of production voice pipelines. It is at the 1.5 s target
 published by Daily and Pipecat and slower than Twilio's (1.1 s target, 1.4 s upper limit).
@@ -298,15 +320,16 @@ Tests use a separate throwaway database, never the live one.
 
 | File | What it proves | Tests |
 |---|---|---|
-| `tests/test_booking.py` | Slots, hours, days, past times, book, move, cancel, the 2-hour rule, who may touch a booking | 23 |
+| `tests/test_booking.py` | Slots, hours, days, past times, the last slot of the day, a date in the wrong year, book, move, cancel, cancel twice, a passed booking, phone numbers written differently, the 2-hour rule, who may touch a booking | 28 |
 | `tests/test_double_booking.py` | 50 simultaneous attempts on one slot, 20 rounds: exactly one wins. Also racing reschedules, reschedule against a new booking, 30 callers for a just-cancelled slot. With the unique index removed, all four fail. | 4 |
-| `tests/test_tools.py` | Confirmation rules, the code-completed booking, privacy of tool answers | 8 |
+| `tests/test_tools.py` | Confirmation rules, the code-completed booking, a read-back the caller put off is never booked by a later "okay", privacy of tool answers | 12 |
+| `tests/test_owner_edits.py` | Owner edits: an edit that would leave an upcoming booking without a slot is refused and changes nothing (rename, slot length, hours, days, service moved); values that would break calls are refused; the owner key check | 8 |
 | `tests/test_isolation.py` | One business cannot see or change another's data | 7 |
-| `tests/test_stt_early.py` | Early speech to text, with the real voice detector and real recordings: one transcript per caller turn, the whole turn in it, no audio sent twice, at most 3 requests for a turn full of pauses | 4 |
-| `tests/test_tts_piper.py` | Where a long sentence is cut for Piper, and where it must not be (short sentences, "12,500", stray words) | 5 |
+| `tests/test_stt_early.py` | Early speech to text, with the real voice detector and real recordings: one transcript per caller turn, the whole turn in it, no audio sent twice, at most 3 requests for a turn full of pauses, a failed transcription loses one turn but not the call | 5 |
+| `tests/test_tts_piper.py` | Where a long sentence is cut for Piper, and where it must not be (short sentences, "12,500", stray words); text with nothing to say ("...") is not sent to Piper | 6 |
 | `tests/test_conversations.py` | Simulated conversations with the real instructions, tools and model: the brief's 15 test questions, a full booking with "next Monday", "tomorrow", a taken slot, cancel, attempts to cancel someone else's booking, prompt tricks, a staff message, the second business | 25 |
 
-Last complete run, on the deployed server: **76 passed, 0 failed** (51 without an LLM, 25
+Last complete run, on the deployed server: **95 passed, 0 failed** (70 without an LLM, 25
 simulated conversations). Full list: [docs/test-results.txt](docs/test-results.txt).
 
 The simulated conversations call a hosted LLM, so they use tokens (about 100,000 per run) and
@@ -393,7 +416,24 @@ What would change, in order:
   *(pending: human voice checks, including echo on laptop speakers.)*
 - **English only.** One Piper voice, an American accent.
 - **Tenant isolation is enforced in application queries**, not by database row-level security.
-- **The owner page uses one shared key** for all businesses.
+- **The owner page uses one shared key** for all businesses, so whoever holds it can read and
+  edit every business, including call logs. The key travels in the address, so it appears in
+  the web server's log and the browser's history. Per-business logins are the fix.
+- **The greeting cannot be interrupted in its first 3 seconds**, and words spoken over it in
+  that time are not heard (the framework's echo guard, see Interruptions). A caller who starts
+  talking at once has to repeat themselves. It can be shortened with one setting
+  (`aec_warmup_duration`), but only after checking by ear that a laptop loudspeaker does not
+  then cut the greeting off. *(pending: Raj's decision after the human voice check.)*
+- **No limit on how often the call page can ask for a call.** Anyone could start many calls
+  and use up the free quotas. Production needs a rate limit per address in front of `/api/token`.
+- **Changing a booking needs only the phone number it was made with.** A caller who knows
+  someone's number can hear that person's appointment time and service (never their name) and
+  cancel or move it.
+- **Move and cancel are not read back by code.** They are refused until the caller has spoken
+  after the lookup, but the confirmation sentence is the LLM's.
+- **If speech to text fails for a caller turn** (after its own retries) the agent says "Sorry,
+  I didn't catch that" and the call goes on. If the LLM or Piper fails three times in a row
+  the framework ends the call without a spoken apology.
 - **A booking is one slot for one service.** No multi-slot services, no multi-service
   bookings, no reminders or confirmations by message.
 - **No test covers a business in a second timezone**, though all time handling uses the
@@ -419,11 +459,12 @@ app/db.py          every database query
 app/schema.sql     tables and the unique index
 app/call_log.py    records transcript, tool calls and latency per reply
 app/tts_piper.py   adapter from LiveKit Agents to the Piper service
+app/stt_early.py   starts speech to text during the end-of-speech wait
 app/web.py         call page and call token
 app/admin.py       owner page: edit details, read call logs
 app/manage.py      command-line helper
 data/*.yaml        one file per business
 tests/             unit, double-booking, isolation and simulated-conversation tests
-scripts/           latency, concurrency and spike scripts
+scripts/           latency, concurrency, awkward-caller (edge_calls.py) and spike scripts
 docs/              EXPLAIN.md, HANDOVER.md, measurements
 ```

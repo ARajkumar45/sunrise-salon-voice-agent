@@ -690,3 +690,84 @@ from that faulty run were thrown away.
 > after the first clause so Piper starts speaking sooner. The slowest replies did not improve:
 > they are tool calls after a dictated phone number. What is left is the LLM provider's own
 > 0.4 seconds and the wait itself, which would need a turn-detection model."
+
+
+---
+
+## Final check for edge cases: what was found and fixed (Fri 27 Nov, morning)
+
+### What was done
+Raj asked for one more check of everything, edge cases included. Three things were done:
+1. An independent reviewer (a second AI session that had not written the code) read the
+   booking, tools, database, owner-page and web code looking for real bugs.
+2. I re-read the new latency code asking "what if this step fails?".
+3. Seven awkward callers were run as real voice calls (`scripts/edge_calls.py`), and the live
+   owner page and public addresses were sent bad input.
+
+### Problems found and fixed (each has a test)
+
+| # | Problem | How it could happen | Fix |
+|---|---|---|---|
+| 1 | **A booking the caller put off could be booked later.** | Agent reads back a booking. Caller: "No wait, let me check my calendar." Later the caller says "Okay, thank you" and the code took that as the yes. | The read-back is dropped at once on "no", "wait", "let me think", "maybe later" and similar, and after a second answer that is not a yes (`app/tools.py`). |
+| 2 | **Renaming a staff member on the owner page made their booked slots look free**, so a slot could be sold twice. | Double booking is blocked per staff member and time. A rename created a new staff row; old bookings stayed on the old row. | An edit that would leave any upcoming booking without a slot is refused as a whole, with a message naming the bookings (`db.bookings_that_no_longer_fit`). |
+| 3 | The same hole from changing the slot length, a staff member's hours or days, or moving a service to another staff member. | For example 30-minute slots changed to 60: a 10:30 booking no longer blocks a 10:00 slot. | Same check as 2. |
+| 4 | **`slot_minutes: 0` would hang the agent** for every call to that business. | A typo on the owner page. The loop that lists slots never ended. | Every value is checked before saving (`db.check_business_data`): slot length 5 to 480, a real timezone name, hours that end after they start, at least one working day, no empty names, and so on. |
+| 5 | A misspelt timezone saved fine and then broke every call. | "Asia/Bangalor". | Same check as 4. |
+| 6 | A "yes" that also carried the phone number could skip the digit-by-digit read-back. | Agent: "10:30 AM Monday. What's your number?" Caller: "Sure, it's Priya, 98765..." | The shortcut now needs the agent to have offered to book that exact time, and the caller's line to contain no digits. "1 PM" no longer matches inside "11 PM". |
+| 7 | If speech to text failed for one caller turn, the call could end in silence. | The provider is down or over its limit even after retries. | The turn is dropped, the agent says "Sorry, I didn't catch that. Could you say it again?", and the call goes on (`app/stt_early.py`, `app/agent.py`). |
+| 8 | Piper answers text with nothing to say ("...", a lone dash) with an error. | The LLM writes "..." as a sentence. | Such text is replaced by a tenth of a second of silence (`app/tts_piper.py`). |
+| 9 | A cancelled booking could be reported as "moved" if the cancel and the move arrived together; a booking in the past could be cancelled or moved. | Two calls about the same booking at once. | The move only touches a booking that is still booked; lookups only return upcoming bookings (`app/booking.py`). |
+| 10 | Any future date was accepted, even the year 2031. | The LLM works out a date with the wrong year. | Dates more than a year ahead are refused with "check the year". |
+| 11 | The owner page could create a brand-new business; odd characters in the key or the address gave a server error instead of a clear refusal. | Hand-made requests. | The page only edits an existing business; a non-English key is simply wrong (403); odd addresses are "No such business" (404). |
+| 12 | A check-in after a cough ("Are you still there?") was logged as a 15-second reply. | Caller coughs, then stays silent. | The latency clock is cleared when the long-silence handling starts (`app/call_log.py`). No measured reply was affected (the worst was 1.9 s). |
+
+### What the awkward callers showed (real voice calls, read word for word)
+- **Caller hangs up mid-answer:** the call closes cleanly, nothing is left running.
+- **Caller pauses mid-sentence:** one reply that answers both halves.
+- **Caller asks a second question over the first answer:** the agent stops in 0.21 s and
+  answers the second question.
+- **7.6 seconds of speech with five questions in it:** one reply, all five answered.
+- **A second of loud hiss:** no reply and no made-up words; the next question is answered.
+- **"Yes, go ahead" with nothing to confirm:** the agent asks which service; nothing is booked.
+- **Cancel with a number that has no booking:** the agent says so and asks for the number again.
+- **Caller talks over the greeting: NOT handled well.** See the next section.
+
+### One thing found and NOT changed: the first 3 seconds of the greeting
+LiveKit ignores the caller for the first 3 seconds of the agent's first speech. It does this
+so that the agent's own voice, coming back through a loudspeaker before the browser's echo
+cancellation has settled, does not interrupt the greeting. The effect: a caller who starts
+talking at once is not heard and has to repeat themselves. Our interruption figure (0.21 s)
+is true for every reply after that.
+
+It is one setting (`aec_warmup_duration`). I did not change it because the risk it guards
+against (echo on laptop speakers) is exactly what I cannot test without a human, and Raj's
+voice check has not happened yet. It is listed in the README's known gaps. **Raj to decide.**
+
+### Things found and deliberately left, all listed in the README's known gaps
+- One shared owner key opens every business (already listed; now says what that means).
+- No limit on how often a browser can ask for a call.
+- A phone number is the only proof of who the caller is.
+- Move and cancel are confirmed in the LLM's words, not read back by code.
+
+### Plan change to know about
+The owner page is now stricter than before: it refuses edits it used to accept (problems 2
+to 5). On the review call, a price, FAQ or added service still saves in one go. Changing a
+staff member's hours, days or name is refused **only if** someone is booked in a slot the
+change removes, and the red message names those bookings.
+
+### Checked and found fine
+No secrets in the repository or its history. Postgres, Piper and the web port are not
+reachable from the internet (checked from outside). Every bookings query is limited to its
+business. No tool returns a customer's name. All SQL uses parameters. The call and owner
+pages put text on screen as text, never as HTML.
+
+### How to explain this on the review call
+"Before submitting I had the code reviewed by a second reviewer and ran awkward callers
+against the live agent. The most important finding was on the owner page: double booking was
+blocked per staff member and start time, so renaming a staff member or changing the slot
+length could leave an existing booking where the check no longer saw it. Now any edit that
+would orphan an upcoming booking is refused and tells the owner which bookings are in the
+way. The second was a read-back that stayed open: a caller who said 'let me think' and later
+'okay, thanks' would have been booked. Both have tests. One thing I found and left for a
+human check is that the greeting cannot be interrupted in its first three seconds, which is
+the framework's echo guard."

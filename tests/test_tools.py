@@ -1,7 +1,7 @@
 """The agent's tools: the two-step confirmation rule, and that tools only see their own business."""
 
 from app import booking
-from app.tools import build_tools, is_plain_yes
+from app.tools import agent_asked_to_book, build_tools, is_plain_yes
 from tests.conftest import count_bookings
 
 PHONE = "9876543210"
@@ -138,3 +138,45 @@ async def test_one_yes_is_enough_when_the_agent_already_read_the_time_back(salon
     lines["agent"] = "May I have your phone number?"
     other = dict(args, time="11:00")
     assert (await book(**other)).startswith("NOT booked yet")
+
+
+async def test_a_read_back_the_caller_put_off_is_not_booked_by_a_later_okay(salon):
+    turn = {"n": 1}
+    tools = tools_for(salon, turn)
+    date, time = far_future_slot(salon)
+    args = dict(service="Haircut (men)", date=date, time=time, customer_name="Asha", customer_phone=PHONE)
+
+    for put_off in ["No, wait, I need to check my calendar.", "Let me think about it.", "Maybe later.", "Hold on."]:
+        await tools["book_appointment"](**args)                    # the read-back
+        assert await tools["finish_booking"](put_off) is None
+        assert await tools["finish_booking"]("Okay, thank you.") is None
+        assert await tools["finish_booking"]("Yes.") is None
+    assert await count_bookings() == 0
+
+
+async def test_a_read_back_does_not_stay_open_for_the_rest_of_the_call(salon):
+    turn = {"n": 1}
+    tools = tools_for(salon, turn)
+    date, time = far_future_slot(salon)
+    await tools["book_appointment"](service="Haircut (men)", date=date, time=time,
+                                    customer_name="Asha", customer_phone=PHONE)
+    assert await tools["finish_booking"]("What was the price?") is None   # one question is fine
+    assert await tools["finish_booking"]("And where are you?") is None    # a second one closes it
+    assert await tools["finish_booking"]("Okay, thanks.") is None
+    assert await count_bookings() == 0
+
+
+async def test_a_yes_that_carries_a_phone_number_still_gets_the_read_back(salon):
+    date, time = far_future_slot(salon)
+    lines = {"agent": "Great, 10:30 AM on Monday. Shall I book it? What's your phone number?",
+             "caller": "Sure, it's Priya, 9876543210"}
+    tools, _ = build_tools(salon, None, lambda: 3, lambda: (lines["agent"], lines["caller"]))
+    book = {tool.info.name: tool for tool in tools}["book_appointment"]
+    answer = await book(service="Haircut (men)", date=date, time=time, customer_name="Priya", customer_phone=PHONE)
+    assert answer.startswith("NOT booked yet") and await count_bookings() == 0
+
+
+def test_the_agent_must_have_offered_exactly_this_time():
+    assert agent_asked_to_book("Haircut at 1 PM, shall I book that?", "1 PM")
+    assert not agent_asked_to_book("Haircut at 11 PM, shall I book that?", "1 PM")
+    assert not agent_asked_to_book("We have 1 PM free. What's your name?", "1 PM")

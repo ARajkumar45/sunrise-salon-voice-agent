@@ -1,0 +1,86 @@
+Final run on the submitted code, Fri 27 Nov 2026 (after the edge-case fixes). 3 rounds of scripts/measure_latency.sh, PAUSE=4.
+
+Reply latency over 66 replies in 21 calls
+(from the moment end of speech is detected to the first reply audio sent)
+
+ALL REPLIES (headline)             n=66  median 0.76s   p95 1.71s   worst 2.02s
+  replies that used a tool         n=27  median 1.16s   p95 1.92s   worst 2.02s
+  replies without a tool           n=39  median 0.69s   p95 0.92s   worst 0.96s
+
+Stages (all replies):
+  speech to text (Whisper)         n=66  median 0.26s   p95 0.35s   worst 0.38s
+    of which after detection       n=66  median 0.01s   p95 0.35s   worst 0.38s
+  LLM, time to first token         n=60  median 0.44s   p95 0.54s   worst 0.62s
+  text to speech, first audio      n=66  median 0.17s   p95 0.41s   worst 0.46s
+
+As the caller feels it (from last word) n=66  median 1.24s   p95 2.19s   worst 2.50s
+
+429 errors: 0  fallbacks: 0  lost turns: 0
+
+As heard at the scripted caller (question end to first reply audio):
+mens_haircut.wav: reply heard 1.34s after the question ended
+sunday.wav: reply heard 1.27s after the question ended
+where.wav: reply heard 1.26s after the question ended
+colour.wav: reply heard 1.40s after the question ended
+upi.wav: reply heard 1.25s after the question ended
+book_haircut.wav: reply heard 1.90s after the question ended
+name_phone.wav: reply heard 1.49s after the question ended
+yes.wav: reply heard 1.44s after the question ended
+cancel.wav: reply heard 2.33s after the question ended
+yes.wav: reply heard 1.66s after the question ended
+facial_tuesday.wav: reply heard 1.82s after the question ended
+poem.wav: reply heard 1.16s after the question ended
+where.wav: reply heard 1.51s after the question ended
+upi.wav: reply heard 1.29s after the question ended
+colour.wav: reply heard 1.49s after the question ended
+sunday.wav: reply heard 1.17s after the question ended
+mens_haircut.wav: reply heard 1.33s after the question ended
+book_haircut.wav: reply heard 1.72s after the question ended
+name_phone.wav: reply heard 1.54s after the question ended
+yes.wav: reply heard 1.36s after the question ended
+cancel.wav: reply heard 2.37s after the question ended
+yes.wav: reply heard 1.81s after the question ended
+mens_haircut.wav: reply heard 1.39s after the question ended
+sunday.wav: reply heard 1.11s after the question ended
+where.wav: reply heard 1.32s after the question ended
+colour.wav: reply heard 1.44s after the question ended
+upi.wav: reply heard 1.28s after the question ended
+book_haircut.wav: reply heard 1.69s after the question ended
+name_phone.wav: reply heard 1.57s after the question ended
+yes.wav: reply heard 1.51s after the question ended
+cancel.wav: reply heard 2.61s after the question ended
+yes.wav: reply heard 1.69s after the question ended
+facial_tuesday.wav: reply heard 1.75s after the question ended
+poem.wav: reply heard 1.17s after the question ended
+where.wav: reply heard 1.33s after the question ended
+upi.wav: reply heard 1.36s after the question ended
+colour.wav: reply heard 1.39s after the question ended
+sunday.wav: reply heard 1.16s after the question ended
+mens_haircut.wav: reply heard 1.33s after the question ended
+book_haircut.wav: reply heard 1.99s after the question ended
+name_phone.wav: reply heard 1.55s after the question ended
+yes.wav: reply heard 1.64s after the question ended
+cancel.wav: reply heard 2.40s after the question ended
+yes.wav: reply heard 1.91s after the question ended
+mens_haircut.wav: reply heard 1.35s after the question ended
+sunday.wav: reply heard 1.15s after the question ended
+where.wav: reply heard 1.46s after the question ended
+colour.wav: reply heard 1.40s after the question ended
+upi.wav: reply heard 1.38s after the question ended
+book_haircut.wav: reply heard 1.71s after the question ended
+name_phone.wav: reply heard 1.55s after the question ended
+yes.wav: reply heard 1.49s after the question ended
+cancel.wav: reply heard 2.72s after the question ended
+yes.wav: reply heard 1.98s after the question ended
+facial_tuesday.wav: reply heard 1.77s after the question ended
+poem.wav: reply heard 1.15s after the question ended
+where.wav: reply heard 1.41s after the question ended
+upi.wav: reply heard 1.45s after the question ended
+colour.wav: reply heard 1.48s after the question ended
+sunday.wav: reply heard 1.26s after the question ended
+mens_haircut.wav: reply heard 1.31s after the question ended
+book_haircut.wav: reply heard 1.88s after the question ended
+name_phone.wav: reply heard 1.62s after the question ended
+yes.wav: reply heard 1.53s after the question ended
+cancel.wav: reply heard 2.44s after the question ended
+yes.wav: reply heard 1.63s after the question ended

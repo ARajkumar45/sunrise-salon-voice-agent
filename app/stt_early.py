@@ -22,10 +22,13 @@ and simply wait for the end of that turn, as before.
 """
 
 import asyncio
+import logging
 import time
 
 from livekit.agents import stt, utils, vad
 from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS, NOT_GIVEN, APIConnectOptions
+
+log = logging.getLogger("receptionist")
 
 # Quiet time after which we start transcribing, as a guess that the caller has finished.
 EARLY_SILENCE = 0.2
@@ -41,6 +44,9 @@ class EarlySTT(stt.STT):
         self.wrapped = wrapped      # the real speech to text (Whisper on Groq)
         self.early_vad = early_vad  # reports the end of speech after EARLY_SILENCE
         self.turn_vad = turn_vad    # reports it after the full END_OF_SPEECH_SILENCE
+        # Called with the error when a caller turn could not be turned into text at all
+        # (speech to text failed even after its own retries). The call itself carries on.
+        self.on_lost_turn = lambda error: None
 
     @property
     def model(self) -> str:
@@ -117,6 +123,7 @@ class EarlyStream(stt.RecognizeStream):
             nonlocal guess, wasted, in_turn
             async for event in turn:
                 if event.type == vad.VADEventType.START_OF_SPEECH:
+                    in_turn = True  # normally set already by the quicker detector
                     self._event_ch.send_nowait(stt.SpeechEvent(stt.SpeechEventType.START_OF_SPEECH))
                 elif event.type == vad.VADEventType.END_OF_SPEECH:
                     ended_at = time.time() - event.silence_duration - event.inference_duration
@@ -127,7 +134,14 @@ class EarlyStream(stt.RecognizeStream):
                     task = guess or self.transcribe(list(recording) or event.frames)
                     guess, wasted, in_turn = None, 0, False
                     recording.clear()
-                    result = await task
+                    try:
+                        result = await task
+                    except Exception as error:
+                        # Speech to text failed (it has already retried). Losing one turn
+                        # must not end the call: report it and keep listening.
+                        log.warning("speech to text failed for one caller turn: %s", error)
+                        self.owner.on_lost_turn(error)
+                        continue
                     if result.alternatives and result.alternatives[0].text:
                         self._event_ch.send_nowait(stt.SpeechEvent(
                             type=stt.SpeechEventType.FINAL_TRANSCRIPT,

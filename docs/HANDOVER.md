@@ -57,6 +57,12 @@ You do this yourself, in your browser. It takes about two minutes and works stra
 Keep the dashes and the spaces at the start of lines as they are. Existing bookings are kept
 when you save.
 
+**If customers are already booked**, the page will not let a change leave them without an
+appointment. For example, if you shorten Anita's hours and someone is booked with her at a
+time you removed, or you change the spelling of her name, you will see a red message listing
+those bookings and nothing is saved. Move or cancel those bookings first (ask your support
+contact), then make the change.
+
 If you would rather not do it yourself, send the change to your support contact (below) and
 it will be made for you, usually within minutes.
 

@@ -5,6 +5,7 @@ Run locally: uvicorn app.web:app --port 8000
 
 import json
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -58,12 +59,18 @@ def call_page(business: str) -> FileResponse:
     return FileResponse(STATIC / "call.html")
 
 
+async def known_business(slug: str) -> dict:
+    """The business row for a slug from a URL, or a 404. Odd characters never reach the database."""
+    row = await db.get_business_row(slug) if re.fullmatch(r"[a-z0-9-]{1,60}", slug) else None
+    if row is None:
+        raise HTTPException(404, "No such business")
+    return row
+
+
 @app.get("/api/business/{business}")
 async def business_name(business: str) -> dict:
     """Only the public name, for the page heading."""
-    row = await db.get_business_row(business)
-    if row is None:
-        raise HTTPException(404, "No such business")
+    row = await known_business(business)
     return {"name": row["name"]}
 
 
@@ -75,8 +82,7 @@ async def token(business: str) -> dict:
     business slug as metadata. That is how the agent knows which business was called.
     The caller cannot change it: the token is signed with our LiveKit secret.
     """
-    if await db.get_business_row(business) is None:
-        raise HTTPException(404, "No such business")
+    await known_business(business)
     room_name = f"{business}-{uuid.uuid4().hex[:10]}"
     jwt = (
         api.AccessToken(os.environ["LIVEKIT_API_KEY"], os.environ["LIVEKIT_API_SECRET"])

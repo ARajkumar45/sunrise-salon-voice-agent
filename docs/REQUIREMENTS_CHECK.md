@@ -11,17 +11,17 @@ Status words: **Done** (run and proven), **Partial** (works with a stated limit)
 | Requirement | Status | Evidence |
 |---|---|---|
 | The call page is live and can take a call | **Done**, one limit | Real Chrome opened the live page, pressed Call, connected in 1.4 s, played the agent's voice for 26 s, published the microphone, hung up, no page errors (`scripts/browser_call_test.mjs`). 100+ scripted voice calls answered. **Limit: no human has called it by voice yet.** |
-| The agent never double books | **Done** | Unique index in Postgres (`app/schema.sql`). 50 simultaneous attempts on one slot, 20 rounds: exactly one wins; plus three more race tests (`tests/test_double_booking.py`). The same tests fail with the index removed. Two live voice calls raced for one slot: one booked, one told "just got taken" (`docs/measurements/m_load_groq_first.txt`). |
+| The agent never double books | **Done** | Owner edits that would leave an upcoming booking without a slot are refused (`tests/test_owner_edits.py`); before 27 Nov a staff rename or a slot-length change could have opened a gap. Unique index in Postgres (`app/schema.sql`). 50 simultaneous attempts on one slot, 20 rounds: exactly one wins; plus three more race tests (`tests/test_double_booking.py`). The same tests fail with the index removed. Two live voice calls raced for one slot: one booked, one told "just got taken" (`docs/measurements/m_load_groq_first.txt`). |
 
 ## The call (25%)
 
 | Requirement | Status | Evidence |
 |---|---|---|
 | Opens the call page, presses Call, talks from the browser | **Done**, same limit as above | Chrome test above. The page is one HTML file, `app/static/call.html`. |
-| Stops talking within half a second when interrupted | **Done**, at the limit | Agent's own clock: stopped 0.214, 0.215, 0.215 s after the caller began speaking. Heard at the caller's end: 0.46, 0.47, 0.52 s (one of three just over). `docs/measurements/interruption_silence_live_change.txt` |
+| Stops talking within half a second when interrupted | **Done**, at the limit, **except during the first 3 s of the greeting** (the framework's echo guard; the caller is not heard then. Raj to decide, see Still open) | Agent's own clock: stopped 0.214, 0.215, 0.215 s after the caller began speaking. Heard at the caller's end: 0.46, 0.47, 0.52 s (one of three just over). `docs/measurements/interruption_silence_live_change.txt` |
 | Handles long silence politely | **Done** | Check-in at 14 s and 26 s, goodbye at 39 s, call ended at 45 s. Same file. |
-| Reply starts within 1.2 s median | **Done** | 0.81 s over 66 replies (1.04 s before the two latency fixes of 27 Nov). `docs/measurements/latency_after_fixes_66_replies.txt` |
-| Reply starts within 2.0 s at the 95th percentile | **Done** for single calls and for 3 at once; not shown for more | 1.74 s over 66 replies (worst 1.90 s). With 3 calls at once p95 was 1.38 s over 15 replies, which is too few for a firm p95. 5 and 8 at once were measured before the latency fixes and went above 2.0 s. `docs/measurements/checks_after_fixes.txt` |
+| Reply starts within 1.2 s median | **Done** | 0.81 s over 66 replies (1.04 s before the two latency fixes of 27 Nov); 0.76 s in a repeat run on the submitted code (`docs/measurements/latency_final_66_replies.txt`). `docs/measurements/latency_after_fixes_66_replies.txt` |
+| Reply starts within 2.0 s at the 95th percentile | **Done** for single calls and for 3 at once; not shown for more | 1.74 s over 66 replies (worst 1.90 s); 1.71 s in the repeat run on the submitted code, where one reply of 66 took 2.02 s. With 3 calls at once p95 was 1.38 s over 15 replies, which is too few for a firm p95. 5 and 8 at once were measured before the latency fixes and went above 2.0 s. `docs/measurements/checks_after_fixes.txt` |
 | Measured from "system detects caller stopped speaking" to "first audio byte sent" | **Done** | `app/call_log.py` starts the clock when the voice detector reports end of speech and stops it when the reply's first audio is sent. |
 | At least 20 turns; median, p95, time for each stage | **Done** | 66 replies. Stages: Whisper 0.26 s (it now runs during the end-of-speech wait, so only 0.01 s of it adds to the reply time), LLM first token 0.43 s, Piper first audio 0.20 s (medians). Tool replies are included in the headline numbers. Comparison with published figures: `docs/RESEARCH.md`. |
 | Many calls at the same time on one deployment | **Partial** | 3 and 5 at once: every question answered, no failed reply. 8 at once: all answered but slow (median 3.1 s), limited by the free speech-to-text tier. README, "Several calls at once". |
@@ -30,7 +30,7 @@ Status words: **Done** (run and proven), **Partial** (works with a stated limit)
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Books, reschedules and cancels | **Done** | `tests/test_booking.py` (23 tests), simulated conversations, and scripted voice calls that booked, moved and cancelled with the row checked in the database. |
+| Books, reschedules and cancels | **Done** | `tests/test_booking.py` (28 tests), simulated conversations, and scripted voice calls that booked, moved and cancelled with the row checked in the database. |
 | Always checks real availability first | **Done** | Availability comes only from the `check_availability` tool, which reads the database. The booking tool checks again and the database index is the final guard. |
 | "Tomorrow", "next Tuesday" in the business's timezone | **Done** | `test_tomorrow_means_tomorrow_in_the_business_timezone`, `test_full_booking_call_with_next_monday`, `test_q06` (Tuesday). A voice call on Wednesday 10:36 PM IST booked "tomorrow at 11" on Thursday 26 November. |
 | Respects stylist days and hours, 30-minute slots, one slot per booking | **Done** | `test_anita_has_eight_half_hour_slots_on_monday`, `test_rahul_works_tuesday_evening_only`, `test_nobody_works_on_sunday`, `test_impossible_bookings_are_refused` (7 cases). |
@@ -79,7 +79,7 @@ Wording varies between runs because an LLM writes the sentences; the tests check
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Automated tests | **Done** | 76 tests, all passing on the server. `docs/test-results.txt` |
+| Automated tests | **Done** | 95 tests, all passing on the server (70 without an LLM, 25 simulated conversations). `docs/test-results.txt` |
 | Including simulated conversations | **Done** | 25, running the real instructions, tools and model. |
 | A test that proves no double booking | **Done** | `tests/test_double_booking.py` |
 
@@ -149,6 +149,18 @@ logs) that is protected by a shared key rather than a staff login.
 - `docker compose up` from a fresh clone had never been run. Now run and recorded.
 - There was no saved test output. `docs/test-results.txt` added.
 
+## What the final edge-case check found and fixed (Fri 27 Nov)
+Twelve problems, each now with a test; the full table is in `docs/EXPLAIN.md`, "Final check
+for edge cases". The two that mattered most:
+- A booking the caller had put off ("let me think") could be booked by a later "okay, thanks".
+- Renaming a staff member, or changing hours or the slot length, on the owner page could make
+  an already-booked slot look free.
+
+Seven awkward callers were run as real voice calls (`scripts/edge_calls.py`): hang-up
+mid-answer, a pause mid-sentence, a second question over the first answer, a long turn, noise,
+a "yes" with nothing to confirm, and talking over the greeting. All behaved correctly except
+the last (see the interruption line above).
+
 ## Still open (needs Raj)
 1. Human voice checks on the live page (`docs/CHECK_WHEN_BACK.md`), especially echo on laptop speakers.
 2. Rehearse the live change on the owner page.
@@ -156,3 +168,6 @@ logs) that is protected by a shared key rather than a staff login.
 4. Confirm the Cerebras spend and that automatic top-up is off.
 5. Decide whether `APPROVAL_PROMPT.md` stays in the public repo.
 6. Record the demo video and add its link to the README.
+7. Decide whether callers may interrupt the greeting in its first 3 seconds. Try it on the
+   live page with laptop speakers: if the greeting is not cut off by its own echo with the
+   guard shortened, shorten it (`aec_warmup_duration` in `app/agent.py`).

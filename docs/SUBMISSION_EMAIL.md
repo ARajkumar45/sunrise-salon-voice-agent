@@ -25,7 +25,7 @@ Measured on the deployed agent, over 66 replies including the ones that call too
 0.81 s and 95th percentile 1.74 s from end of speech detected to first audio sent. Measured the
 way the industry usually does, from the caller's last word to audio heard, the median is 1.50 s;
 the README and docs/RESEARCH.md set that against published figures and show what I changed
-after making that comparison (the median was 1.04 s before). 76 automated
+after making that comparison (the median was 1.04 s before). 95 automated
 tests pass, including 25 simulated conversations (your 15 test questions among them) and a
 test that fires 50 simultaneous bookings at one slot.
 

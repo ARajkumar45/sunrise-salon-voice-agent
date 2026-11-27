@@ -1,0 +1,124 @@
+##### EDGE CALLS
+
+== hang_up ==
+connected in 0.49s, room sunrise-salon-test-a849fd29
+  hanging up mid-answer
+
+== talk_over_greeting ==
+connected in 0.31s, room sunrise-salon-test-7d507e5c
+  the question asked over the greeting was not heard (expected, see above)
+  the same question asked again: reply heard 1.31s later
+
+== pause_mid_sentence ==
+connected in 0.10s, room sunrise-salon-test-73061e25
+  one turn with a pause in it: reply heard 1.40s later
+
+== second_question_over_the_answer ==
+connected in 0.32s, room sunrise-salon-test-dd8d5744
+  second question asked over the first answer: reply heard 1.46s later
+
+== long_turn ==
+connected in 0.10s, room sunrise-salon-test-688579e5
+  speaking for 7.6s
+  long turn: reply heard 1.21s later
+
+== noise ==
+connected in 0.10s, room sunrise-salon-test-5415f437
+  hiss (no reply is the right outcome): NO REPLY within 6s
+  question after the hiss: reply heard 1.54s later
+
+== nonsense_then_question ==
+connected in 0.32s, room sunrise-salon-test-8b17c8f5
+  a bare yes with nothing to confirm: reply heard 1.39s later
+  asks to cancel a booking that may not exist: reply heard 2.04s later
+  no thanks: reply heard 1.12s later
+--- call 203
+01:59:47  AGENT : Hello, thank you for calling Sunrise Salon. How can I help you today?
+01:59:51  CALLER: When is the hair color person in?
+01:59:53  AGENT : Rahul  [cut off by caller]
+01:59:53    (reply started 0.806s after end of speech was detected, 1.287s after the caller's last word: stt 0.289s, llm 0.485s, tts 0.232s)
+--- call 204
+02:00:00  AGENT : Hello, thank you for calling Sunrise Salon. How can I help you today?
+02:00:00    [interruption] {'agent_stopped_after_s': 2.867}
+02:00:08  CALLER: Where are you located?
+02:00:12  AGENT : We’re at 12 Lake Road, Indiranagar, Bengaluru.
+02:00:12    (reply started 0.63s after end of speech was detected, 1.11s after the caller's last word: stt 0.27s, llm 0.433s, tts 0.163s)
+--- call 205
+02:00:21  AGENT : Hello, thank you for calling Sunrise Salon. How can I help you today?
+02:00:25  CALLER: Are you open on Sunday? Where are you located?
+02:00:32  AGENT : We’re closed on Sundays, and our salon is at 12 Lake Road, Indiranagar, Bengaluru.
+02:00:32    (reply started 0.641s after end of speech was detected, 1.121s after the caller's last word: stt 0.278s, llm 0.505s, tts 0.125s)
+--- call 206
+02:00:41  AGENT : Hello, thank you for calling Sunrise Salon. How can I help you today?
+02:00:44  CALLER: When is the hair color person in?
+02:00:47    [interruption] {'agent_stopped_after_s': 0.214}
+02:00:48  AGENT : Rahul Shetty does hair colour  [cut off by caller]
+02:00:48    (reply started 0.775s after end of speech was detected, 1.256s after the caller's last word: stt 0.24s, llm 0.486s, tts 0.273s)
+02:00:48  CALLER: Can I pay by UPI?
+02:00:52  AGENT : Yes, we accept cash, UPI and cards.
+02:00:52    (reply started 0.81s after end of speech was detected, 1.29s after the caller's last word: stt Nones, llm 0.504s, tts 0.263s)
+--- call 207
+02:01:02  AGENT : Hello, thank you for calling Sunrise Salon. How can I help you today?
+02:01:11  CALLER: How much is a haircut for men? Are you open on Sunday? Where are you located? Can I pay by UPI? When is the hair color person in?
+02:01:29  AGENT : A men's haircut is four hundred rupees with Anita Rao. We are closed on Sunday. Our salon is at 12 Lake Road, Indiranagar, Bengaluru. We accept cash, UPI and cards. Hair colour is done by Rahul Shetty on Tuesdays, Thursdays and Saturdays from four PM to eight PM.
+02:01:29    (reply started 0.785s after end of speech was detected, 1.266s after the caller's last word: stt 0.323s, llm 0.456s, tts 0.243s)
+--- call 208
+02:01:39  AGENT : Hello, thank you for calling Sunrise Salon. How can I help you today?
+02:01:49  CALLER: Where are you located?
+02:01:54  AGENT : We’re at 12 Lake Road, Indiranagar, Bengaluru. How may I assist you?
+02:01:54    (reply started 0.799s after end of speech was detected, 1.28s after the caller's last word: stt 0.299s, llm 0.551s, tts 0.188s)
+--- call 209
+02:02:03  AGENT : Hello, thank you for calling Sunrise Salon. How can I help you today?
+02:02:07  CALLER: Yes, that is correct. Please go ahead.
+02:02:10  AGENT : Sure, may I have the service you’d like to book?
+02:02:10    (reply started 0.768s after end of speech was detected, 1.248s after the caller's last word: stt 0.306s, llm 0.53s, tts 0.13s)
+02:02:21  CALLER: I want to cancel my booking. My phone number is 9-8-7-6-5-4-3-2-1-0.
+02:02:22    TOOL  find_my_bookings({"customer_phone":"9876543210"}) -> No upcoming bookings for that phone number.
+02:02:29  AGENT : I’m sorry, I couldn’t find any bookings with that number. Could you please repeat your phone number slowly, digit by digit?
+02:02:29    (reply started 1.38s after end of speech was detected, 1.86s after the caller's last word: stt 0.349s, llm 0.413s, tts 0.182s, used a tool)
+02:02:32  CALLER: No thank you, that is all.
+02:02:34    (reply started 0.542s after end of speech was detected, 1.022s after the caller's last word: stt 0.257s, llm 0.444s, tts 0.081s)
+02:02:34  AGENT : Alright, have a great day!
+##### INTERRUPTION x3
+agent went quiet 0.47s after the caller started talking over it
+agent went quiet 0.52s after the caller started talking over it
+agent went quiet 0.46s after the caller started talking over it
+interruption: agent stopped 0.213s
+interruption: agent stopped 0.263s
+interruption: agent stopped 0.215s
+##### SILENCE
+connected in 0.30s, room sunrise-salon-test-015056e2
+greeting heard 1.64s after pressing Call
+agent spoke after 14.1s of caller silence
+agent spoke after 25.6s of caller silence
+agent spoke after 39.0s of caller silence
+agent ended the call after 43.8s of caller silence
+##### 3 CALLS AT ONCE
+===== 3 CALLS AT ONCE =====
+caller 1: 5 of 5 questions answered
+caller 2: 5 of 5 questions answered
+caller 3: 5 of 5 questions answered
+rate-limit (429) errors seen by the agent: 0
+fallbacks to the next model:              0
+replies where every model failed:         0
+peak container CPU and memory now:
+app-agent-1  cpu=19.76%  mem=1.18GiB / 11.68GiB
+app-web-1  cpu=14.71%  mem=92.63MiB / 11.68GiB
+app-caddy-1  cpu=0.00%  mem=61.07MiB / 11.68GiB
+app-db-1  cpu=0.00%  mem=72.38MiB / 11.68GiB
+app-tts-1  cpu=0.01%  mem=1.547GiB / 11.68GiB
+
+Reply latency over 15 replies in 3 calls
+(from the moment end of speech is detected to the first reply audio sent)
+
+ALL REPLIES (headline)             n=15  median 0.75s   p95 1.43s   worst 1.43s
+  replies that used a tool         n=3   median 1.26s   p95 1.43s   worst 1.43s
+  replies without a tool           n=12  median 0.66s   p95 0.93s   worst 0.93s
+
+Stages (all replies):
+  speech to text (Whisper)         n=15  median 0.24s   p95 0.32s   worst 0.32s
+    of which after detection       n=15  median 0.00s   p95 0.04s   worst 0.04s
+  LLM, time to first token         n=15  median 0.45s   p95 0.62s   worst 0.62s
+  text to speech, first audio      n=15  median 0.21s   p95 0.45s   worst 0.45s
+
+As the caller feels it (from last word) n=15  median 1.23s   p95 1.91s   worst 1.91s

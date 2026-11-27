@@ -162,3 +162,42 @@ async def test_another_phone_cannot_move_or_cancel_my_booking(salon, now):
     with pytest.raises(BookingError, match="No active booking"):
         await booking.reschedule(salon, mine["booking_id"], OTHER_PHONE, WED, "10:00", now=now)
     assert await count_bookings() == 1
+
+
+async def test_a_date_more_than_a_year_away_is_refused(salon, now):
+    with pytest.raises(BookingError, match="more than a year away"):
+        await booking.book(salon, "Haircut (men)", "2031-11-24", "10:30", "Asha", PHONE, now=now)
+    with pytest.raises(BookingError, match="more than a year away"):
+        await booking.book(salon, "Haircut (men)", "9999-12-27", "10:30", "Asha", PHONE, now=now)
+
+
+async def test_the_last_slot_ends_at_closing_time(salon, now):
+    # Anita Rao works 10:00 to 14:00: 13:30 is the last slot, 14:00 is not one.
+    await booking.book(salon, "Haircut (men)", MON, "13:30", "Asha", PHONE, now=now)
+    with pytest.raises(BookingError, match="does not have a slot"):
+        await booking.book(salon, "Haircut (men)", MON, "14:00", "Asha", PHONE, now=now)
+
+
+async def test_a_phone_number_is_the_same_however_it_is_written(salon, now):
+    made = await booking.book(salon, "Haircut (men)", MON, "10:30", "Asha", "+91 98765 43210", now=now)
+    found = await booking.bookings_for_phone(salon, "098765-43210", now=now)
+    assert [b["booking_id"] for b in found] == [made["booking_id"]]
+    await booking.cancel(salon, made["booking_id"], "9876543210", now=now)
+
+
+async def test_cancelling_twice_and_moving_a_cancelled_booking_are_refused(salon, now):
+    made = await booking.book(salon, "Haircut (men)", MON, "10:30", "Asha", PHONE, now=now)
+    await booking.cancel(salon, made["booking_id"], PHONE, now=now)
+    with pytest.raises(BookingError, match="No active booking"):
+        await booking.cancel(salon, made["booking_id"], PHONE, now=now)
+    with pytest.raises(BookingError, match="No active booking"):
+        await booking.reschedule(salon, made["booking_id"], PHONE, WED, "11:00", now=now)
+
+
+async def test_a_booking_that_has_passed_cannot_be_moved_or_cancelled(salon, now):
+    made = await booking.book(salon, "Haircut (men)", MON, "10:30", "Asha", PHONE, now=now)
+    next_day = now + dt.timedelta(days=1)
+    with pytest.raises(BookingError, match="No active booking"):
+        await booking.cancel(salon, made["booking_id"], PHONE, now=next_day)
+    with pytest.raises(BookingError, match="No active booking"):
+        await booking.reschedule(salon, made["booking_id"], PHONE, WED, "11:00", now=next_day)

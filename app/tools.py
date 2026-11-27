@@ -10,6 +10,7 @@ When something cannot be done, the tool returns the reason as plain words
 """
 
 import datetime as dt
+import re
 
 from livekit.agents import StopResponse, function_tool
 
@@ -28,6 +29,12 @@ def spoken_digits(phone: str) -> str:
 YES_WORDS = ("yes", "yeah", "yep", "yup", "correct", "right", "sure", "ok", "okay", "go ahead",
              "please do", "book it", "confirm", "confirmed", "that's fine", "sounds good", "perfect")
 NOT_A_PLAIN_YES = ("no", "not", "don't", "but", "wait", "change", "instead", "actually", "wrong", "different", "cancel")
+# Words that mean "not now" after a read-back, even without a "no": "let me think", "I'll call back".
+PUTS_IT_OFF = NOT_A_PLAIN_YES + ("later", "think", "maybe", "hold", "check", "back", "moment", "minute", "second")
+
+
+def words_of(text: str) -> list[str]:
+    return "".join(ch if ch.isalnum() or ch in "' " else " " for ch in text.lower().replace("’", "'")).split()
 
 
 def is_plain_yes(text: str) -> bool:
@@ -35,11 +42,18 @@ def is_plain_yes(text: str) -> bool:
 
     Anything longer or hedged ("yes but make it 11") is left for the LLM to handle.
     """
-    words = "".join(ch if ch.isalnum() or ch in "' " else " " for ch in text.lower().replace("’", "'")).split()
+    words = words_of(text)
     if not words or len(words) > 12 or any(word in NOT_A_PLAIN_YES for word in words):
         return False
     joined = " ".join(words)
     return any(joined == yes or joined.startswith(yes + " ") or f" {yes} " in f" {joined} " for yes in YES_WORDS)
+
+
+def agent_asked_to_book(agent_line: str, time_text: str) -> bool:
+    """True if the agent's last line offered to book and named exactly this time
+    ("1 PM" must not match inside "11 PM")."""
+    line = agent_line.lower()
+    return "book" in line and re.search(rf"(?<!\d){re.escape(time_text.lower())}", line) is not None
 
 
 def build_tools(business: dict, call_id: int, caller_turns=lambda: 0,
@@ -57,7 +71,7 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0,
     - Move or cancel: refused unless the caller has spoken since find_my_bookings showed
       their booking. So they have heard which booking it is and answered.
     """
-    waiting = {"action": None, "turn": -1, "booking": None}
+    waiting = {"action": None, "turn": -1, "booking": None, "other_answers": 0}
     last_lookup = {"turn": 10**9}  # no lookup yet
 
     def read_back_confirmed(*action) -> bool:
@@ -67,7 +81,7 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0,
             return True
         if waiting["action"] == action:
             raise BookingError("WAIT. The caller has not answered yet. Ask them to confirm and end your turn.")
-        waiting.update(action=action, turn=caller_turns())
+        waiting.update(action=action, turn=caller_turns(), other_answers=0)
         return False
 
     def caller_spoke_since_lookup() -> bool:
@@ -85,6 +99,7 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0,
         try:
             chosen = booking.find_service(business, service)
             day = booking.parse_date(date)
+            booking.check_day(business, day, booking.now_at(business))
             free = await booking.free_slots(business, chosen, day)
             if free:
                 answer = (f"{chosen['name']} with {chosen['staff_name']} on {day:%A %d %B} ({day.isoformat()}): "
@@ -126,13 +141,15 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0,
             if slot not in await booking.free_slots(business, chosen, day):
                 # Taken. If it is this caller's own booking (already completed), say so calmly.
                 mine = await booking.bookings_for_phone(business, phone)
-                if any(b["when"] == booking.say_slot(slot) for b in mine):
+                if any(b["when"] == booking.say_slot(slot) and b["service"] == chosen["name"] for b in mine):
                     return f"Already booked: {chosen['name']} on {booking.say_slot(slot)} is confirmed for this caller."
                 return f"Not booked. {booking.say_slot(slot)} is already taken. Check availability and offer another time."
             # Sometimes the agent reads the details back by itself and the caller says yes before
             # this tool is ever called. That counts: the caller heard the time and agreed.
             agent_line, caller_line = last_lines()
-            already_agreed = is_plain_yes(caller_line) and db.format_time(slot.time()).lower() in agent_line.lower()
+            # A caller line with digits in it is giving a phone number, not agreeing to one.
+            already_agreed = (is_plain_yes(caller_line) and not any(ch.isdigit() for ch in caller_line)
+                              and agent_asked_to_book(agent_line, db.format_time(slot.time())))
             if not already_agreed and not read_back_confirmed("book", chosen["id"], slot, phone):
                 waiting["booking"] = (service, date, time, customer_name, customer_phone)
                 if speak is not None:
@@ -234,8 +251,18 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0,
         code books it here and returns the result. This does not depend on the LLM remembering
         to call book_appointment a second time, so the agent cannot say "you're booked" when
         nothing was saved.
+
+        A read-back does not stay open for ever. If the caller puts it off ("no", "wait", "let
+        me think") it is dropped at once. One other answer is allowed (a question such as
+        "what was the price?"); after a second one it is dropped. Otherwise an "okay, thanks"
+        much later in the call would book something the caller never agreed to.
         """
-        if waiting["action"] is None or waiting["action"][0] != "book" or not is_plain_yes(caller_text):
+        if waiting["action"] is None or waiting["action"][0] != "book":
+            return None
+        if not is_plain_yes(caller_text):
+            waiting["other_answers"] += 1
+            if waiting["other_answers"] > 1 or any(word in PUTS_IT_OFF for word in words_of(caller_text)):
+                waiting["action"] = None
             return None
         details, waiting["action"] = waiting["booking"], None
         try:

@@ -52,6 +52,7 @@
     setStatus("Connecting...");
     try {
       const response = await fetch("/api/token?business=" + encodeURIComponent(business));
+      if (!response.ok) throw new Error("no token: " + response.status);
       const { url, token } = await response.json();
 
       room = new Room();

@@ -61,6 +61,9 @@ class CallRecorder:
         if event.old_state == "speaking" and event.new_state == "listening":
             self.user_stopped_at = time.time()
             self.last_word_at = event.created_at
+        elif event.new_state == "away":
+            # A long silence. What the agent says next is a check-in, not a reply to time.
+            self.user_stopped_at = None
         elif event.new_state == "speaking" and self.session.agent_state == "speaking":
             # The caller started talking over the agent.
             self.interrupt_started_at = event.created_at

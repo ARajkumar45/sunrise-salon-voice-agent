@@ -24,7 +24,7 @@ PAGE = Path(__file__).parent / "static" / "admin.html"
 
 def check_key(key: str) -> None:
     expected = os.environ.get("ADMIN_KEY", "")
-    if not expected or not hmac.compare_digest(key, expected):
+    if not expected or not hmac.compare_digest(key.encode(), expected.encode()):
         raise HTTPException(403, "Wrong or missing key")
 
 
@@ -47,19 +47,17 @@ async def get_data(business: str, key: str = "") -> str:
 async def save_data(business: str, request: Request, key: str = "") -> str:
     """Check the edited text carefully before saving, and explain mistakes in plain words."""
     check_key(key)
+    if await db.get_business_row(business) is None:  # this page edits a business, it never creates one
+        raise HTTPException(404, "No such business")
     try:
         data = yaml.safe_load((await request.body()).decode())
-    except yaml.YAMLError as error:
+    except (yaml.YAMLError, UnicodeDecodeError) as error:
         raise HTTPException(400, f"The text is not laid out correctly: {error}") from None
     if not isinstance(data, dict) or data.get("slug") != business:
         raise HTTPException(400, f"The 'slug' line must stay as: {business}")
-    staff_names = {person.get("name") for person in data.get("staff", [])}
-    for service in data.get("services", []):
-        if service.get("staff") not in staff_names:
-            raise HTTPException(400, f"Service '{service.get('name')}' names a staff member who is not in the staff list.")
     try:
-        await db.save_business(data)
-    except Exception as error:  # a missing field, a bad time, an unknown day name...
+        await db.save_business(data)  # checks every value first; see db.check_business_data
+    except Exception as error:  # a missing field, a bad time, a booking that would no longer fit...
         raise HTTPException(400, f"Could not save: {error}") from None
     return "Saved. The next call will use the new details."
 
