@@ -298,11 +298,11 @@ async def end_call(call_id: int) -> None:
         await conn.execute("UPDATE calls SET ended_at = now() WHERE id = %s", (call_id,))
 
 
-async def log_event(call_id: int, kind: str, data: dict) -> None:
+async def log_event(call_id: int, kind: str, data: dict, at: dt.datetime | None = None) -> None:
     async with (await pool()).connection() as conn:
         await conn.execute(
-            "INSERT INTO call_events (call_id, kind, data) VALUES (%s, %s, %s)",
-            (call_id, kind, json.dumps(data, default=str)))
+            "INSERT INTO call_events (call_id, kind, data, at) VALUES (%s, %s, %s, COALESCE(%s, now()))",
+            (call_id, kind, json.dumps(data, default=str), at))
 
 
 async def add_staff_message(business_id: int, call_id: int | None, message: str,
@@ -336,7 +336,7 @@ async def list_calls(slug: str, limit: int = 20) -> list[dict]:
 async def get_call_events(call_id: int) -> list[dict]:
     async with (await pool()).connection() as conn:
         cur = await conn.execute(
-            "SELECT at, kind, data FROM call_events WHERE call_id = %s ORDER BY id", (call_id,))
+            "SELECT at, kind, data FROM call_events WHERE call_id = %s ORDER BY at, id", (call_id,))
         return await cur.fetchall()
 
 

@@ -33,7 +33,8 @@ def describe_event(event: dict) -> str:
         cut = "  [cut off by caller]" if data.get("interrupted") else ""
         return f"{data['who'].upper():6}: {data['text']}{cut}"
     if kind == "tool":
-        return f"  TOOL  {data['name']}({data['arguments']}) -> {data['result']}"
+        failed = "  [THE TOOL FAILED]" if data.get("failed") else ""
+        return f"  TOOL  {data['name']}({data['arguments']}) -> {data['result']}{failed}"
     if kind == "latency":
         return (f"  (reply started {data['reply_latency_s']}s after end of speech was detected, "
                 f"{data.get('since_last_word_s')}s after the caller's last word: "

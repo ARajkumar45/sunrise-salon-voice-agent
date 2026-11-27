@@ -1,6 +1,6 @@
 # Reply email to PorsAI (draft, for Raj to send)
 
-Fill in the three items in [square brackets] before sending. The owner page key is the
+Fill in the four items in [square brackets] before sending. The owner page key is the
 `ADMIN_KEY` value in your `.env`; paste it into the email, never into the repository.
 
 ---
@@ -25,8 +25,8 @@ Measured on the deployed agent, over 66 replies including the ones that call too
 0.81 s and 95th percentile 1.74 s from end of speech detected to first audio sent. Measured the
 way the industry usually does, from the caller's last word to audio heard, the median is 1.50 s;
 the README and docs/RESEARCH.md set that against published figures and show what I changed
-after making that comparison (the median was 1.04 s before). 95 automated
-tests pass, including 25 simulated conversations (your 15 test questions among them) and a
+after making that comparison (the median was 1.04 s before). 103 automated
+tests pass, including 29 simulated conversations (your 15 test questions among them) and a
 test that fires 50 simultaneous bookings at one slot.
 
 Things I would rather you hear from me than find:
@@ -35,8 +35,14 @@ Things I would rather you hear from me than find:
   Groq's free tier allows 200,000 tokens a day for the best model, about 100 replies. It is the
   same open model. Without the Cerebras key the project runs on Groq's free tier alone, where
   I measured a median of 1.43 s and a 95th percentile of 2.57 s, which misses the target.
-- With 3 calls at once the targets hold. With 5 nothing fails, but the 95th percentile went
+- With 3 calls at once the targets held in the last two runs (15 replies each, too few for a
+  firm 95th percentile). With 5 nothing fails, but the 95th percentile went
   above 2 seconds, and about 3 to 5 simultaneous callers is the practical limit on free tiers.
+- Voice testing was done with a scripted caller and a synthetic voice, including your 15 test
+  questions and two calls racing for one slot. [Delete this line if you have by now called it
+  yourself, or say what you found.]
+- The greeting cannot be interrupted in its first 3 seconds (an echo guard). Every later reply
+  stops within about half a second.
 - The demo runs on trial credit (Oracle VM, Cerebras) that ends in late December.
 - None of the optional extras is built, apart from a small owner page protected by a shared key.
 

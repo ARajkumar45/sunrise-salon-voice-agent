@@ -1,7 +1,8 @@
 # Requirements check against the assignment
 
-Every line of the assignment, with its status and the evidence. Done on Thursday 26 November
-2026, on the deployed version (commit history on `main`). "Evidence" points at a file in this
+Every line of the assignment, with its status and the evidence. First done on Thursday 26
+November 2026 and brought up to date on Friday 27 November after the latency fixes, the
+edge-case check and a line-by-line audit against the brief (three independent reviewers). "Evidence" points at a file in this
 repository or a command that reproduces it.
 
 Status words: **Done** (run and proven), **Partial** (works with a stated limit), **Not done**.
@@ -18,8 +19,8 @@ Status words: **Done** (run and proven), **Partial** (works with a stated limit)
 | Requirement | Status | Evidence |
 |---|---|---|
 | Opens the call page, presses Call, talks from the browser | **Done**, same limit as above | Chrome test above. The page is one HTML file, `app/static/call.html`. |
-| Stops talking within half a second when interrupted | **Done**, at the limit, **except during the first 3 s of the greeting** (the framework's echo guard; the caller is not heard then. Kept on purpose, see `docs/EXPLAIN.md`) | Agent's own clock: stopped 0.214, 0.215, 0.215 s after the caller began speaking. Heard at the caller's end: 0.46, 0.47, 0.52 s (one of three just over). `docs/measurements/interruption_silence_live_change.txt` |
-| Handles long silence politely | **Done** | Check-in at 14 s and 26 s, goodbye at 39 s, call ended at 45 s. Same file. |
+| Stops talking within half a second when interrupted | **Done**, at the limit, **except during the first 3 s of the greeting** (the framework's echo guard; the caller is not heard then. Kept on purpose, see `docs/EXPLAIN.md`) | Agent's own clock, nine samples in three runs: 0.21 to 0.26 s after the caller began speaking. Heard at the caller's end: 0.46 to 0.52 s; in each run one of the three samples was 0.52 s, just over. `docs/measurements/interruption_silence_live_change.txt` |
+| Handles long silence politely | **Done** | Check-in at 14 s and 26 s, goodbye at 39 s, call ended at 44 s (three runs: 43.3 to 44.6 s). Same file. |
 | Reply starts within 1.2 s median | **Done** | 0.81 s over 66 replies (1.04 s before the two latency fixes of 27 Nov); 0.76 s in a repeat run on the submitted code (`docs/measurements/latency_final_66_replies.txt`). `docs/measurements/latency_after_fixes_66_replies.txt` |
 | Reply starts within 2.0 s at the 95th percentile | **Done** for single calls and for 3 at once; not shown for more | 1.74 s over 66 replies (worst 1.90 s); 1.71 s in the repeat run on the submitted code, where one reply of 66 took 2.02 s. With 3 calls at once p95 was 1.38 s over 15 replies, which is too few for a firm p95. 5 and 8 at once were measured before the latency fixes and went above 2.0 s. `docs/measurements/checks_after_fixes.txt` |
 | Measured from "system detects caller stopped speaking" to "first audio byte sent" | **Done** | `app/call_log.py` starts the clock when the voice detector reports end of speech and stops it when the reply's first audio is sent. |
@@ -30,9 +31,9 @@ Status words: **Done** (run and proven), **Partial** (works with a stated limit)
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Books, reschedules and cancels | **Done** | `tests/test_booking.py` (28 tests), simulated conversations, and scripted voice calls that booked, moved and cancelled with the row checked in the database. |
-| Always checks real availability first | **Done** | Availability comes only from the `check_availability` tool, which reads the database. The booking tool checks again and the database index is the final guard. |
-| "Tomorrow", "next Tuesday" in the business's timezone | **Done** | `test_tomorrow_means_tomorrow_in_the_business_timezone`, `test_full_booking_call_with_next_monday`, `test_q06` (Tuesday). A voice call on Wednesday 10:36 PM IST booked "tomorrow at 11" on Thursday 26 November. |
+| Books, reschedules and cancels | **Done** | `tests/test_booking.py` (28 tests); simulated conversations for a full booking, a cancel and a reschedule (`test_reschedule_by_conversation`); and voice calls on the live agent that booked, moved to 12:30 and cancelled the same booking, with the row checked in the database (`docs/measurements/brief_questions_and_reschedule_by_voice.txt`). |
+| Always checks real availability first | **Done** | Availability comes only from the `check_availability` tool, which reads the database. The booking tool and the move tool both check the slot is free before asking the caller to confirm, and the database index is the final guard. That the agent calls the tool before offering a time is a prompt rule, checked in the conversation tests and visible in every voice call log. |
+| "Tomorrow", "next Tuesday" in the business's timezone | **Done** | `tests/test_prompt.py` (fixed clock: at 20:00 UTC today is the 24th in India and the 23rd in New York), `test_next_tuesday_becomes_the_right_date`, `test_full_booking_call_with_next_monday`, `test_tomorrow_means_tomorrow_in_the_business_timezone`. Limit: the LLM picks the date from a dated list; code checks it is a working day, and the read-back says the weekday and date. A voice call on Wednesday 10:36 PM IST booked "tomorrow at 11" on Thursday 26 November. |
 | Respects stylist days and hours, 30-minute slots, one slot per booking | **Done** | `test_anita_has_eight_half_hour_slots_on_monday`, `test_rahul_works_tuesday_evening_only`, `test_nobody_works_on_sunday`, `test_impossible_bookings_are_refused` (7 cases). |
 | Never books the same slot twice, even at the same moment | **Done** | See Must pass. |
 
@@ -79,8 +80,8 @@ Wording varies between runs because an LLM writes the sentences; the tests check
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Automated tests | **Done** | 95 tests, all passing on the server (70 without an LLM, 25 simulated conversations). `docs/test-results.txt` |
-| Including simulated conversations | **Done** | 25, running the real instructions, tools and model. |
+| Automated tests | **Done** | 103 tests, all passing on the server (74 without an LLM, 29 simulated conversations). `docs/test-results.txt` |
+| Including simulated conversations | **Done** | 29, running the real instructions, tools and model. |
 | A test that proves no double booking | **Done** | `tests/test_double_booking.py` |
 
 ## Working with the customer (10%)
@@ -148,6 +149,26 @@ logs) that is protected by a shared key rather than a staff login.
 - One simulated conversation was stricter than the requirement (it failed a correct answer). Corrected.
 - `docker compose up` from a fresh clone had never been run. Now run and recorded.
 - There was no saved test output. `docs/test-results.txt` added.
+
+## What the audit against the brief found and fixed (Fri 27 Nov, later)
+Three independent reviewers went through the brief section by section, and all 15 test
+questions were asked by voice on the live agent. Fixed as a result:
+- Reschedule had never been proven by conversation or by voice. Now both.
+- "Next Tuesday" and the timezone of "tomorrow" had weak proof. Now fixed-clock tests.
+- "Book me a haircut" (men's or women's?) gave the agent a misleading error. It now asks which.
+  Service names as speech to text spells them ("hair color", "mens haircut") are matched.
+- The rules text contained the salon's "2 hours" as an example, which every business would
+  have received. Removed; `tests/test_prompt.py` checks it.
+- "What time do you close?" had no data behind it. Opening times are now worked out from
+  staff hours.
+- "Can I speak to a human?" was refused. The agent now offers to take a message for the staff.
+- The answers to the UPI and membership questions sometimes left out part of what the brief
+  expects (the other payment methods; the offer to pass it on). Rules tightened; 24 of 24
+  repeat answers were then complete.
+- The handover note was two pages. It is now one.
+- Stale numbers in the README and this file, and the call log's ordering and empty results.
+
+Still true and listed in the README: the points under "Still open" below.
 
 ## What the final edge-case check found and fixed (Fri 27 Nov)
 Twelve problems, each now with a test; the full table is in `docs/EXPLAIN.md`, "Final check

@@ -14,7 +14,15 @@ link access on. Rehearse once; if a take goes wrong, say so and carry on rather 
 | 2:35 | Press Call again | "I want to cancel my booking", give the same phone number, confirm. Hang up. |
 | 3:10 | Owner page, Recent calls | Open the booking call: point at the transcript, the tool calls and the latency line. |
 | 3:35 | Owner page, details | Change a price, press Save, call again and ask for that price. Change it back. |
-| 4:10 | The second business page, /call/greenline-auto-care | One question: "How much is an oil change?" Say it was added with one data file in 16 seconds. |
-| 4:30 | README latency table | "Median 0.8 seconds, p95 1.7 over 66 replies; 1.5 seconds as the caller hears it. Known gaps are listed in the README, including that the main model runs on Cerebras credit rather than a free tier." |
+| 4:10 | README latency table | "Median 0.8 seconds, p95 1.7 over 66 replies; 1.5 seconds as the caller hears it. Known gaps are listed in the README, including that the main model runs on Cerebras credit rather than a free tier." |
 
-Before recording: make sure no test booking is sitting on the slot you plan to book.
+Before recording:
+- Make sure no test booking is sitting on the slot you plan to book.
+- **Keep the owner key off screen.** The owner page's address contains the key and the video is
+  open to anyone with the link. Record only the page area, or zoom the browser so the address
+  bar is cut off, and check the recording before sharing it.
+- The plan above ends at about 4:30, leaving half a minute spare. If you are still ahead at
+  4:10, add the second business (/call/greenline-auto-care, "How much is an oil change?").
+  If you are behind, drop the price change at 3:35.
+- A reschedule works as well as a cancel at 2:35: "I want to move my booking to 12:30", the
+  same phone number, then yes.

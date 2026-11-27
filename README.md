@@ -52,14 +52,16 @@ LiveKit.
 | Audio transport | LiveKit Cloud, free Build plan | The server is open source; we use the hosted free tier | LiveKit Cloud (routed via India South) |
 | Voice activity detection | Silero VAD | Yes, MIT | Our VM, inside the agent |
 | Speech to text | Whisper `whisper-large-v3-turbo` | Open model | Groq free tier |
-| LLM | `gpt-oss-120b`, medium reasoning | Open weights | Groq free tier and Cerebras (see below) |
+| LLM | `gpt-oss-120b`, medium reasoning | Open weights (released by OpenAI under Apache-2.0; we never call OpenAI) | Cerebras first, then Groq free tier (see below) |
 | LLM fallbacks | `gpt-oss-20b`, then `qwen3.8-27b` | Open weights | Groq free tier |
 | Text to speech | Piper, voice `en_US-lessac-medium` | Yes (Piper is GPL-3.0; it runs as its own container and our code only calls it over HTTP) | Our VM |
 | Database | Postgres 16 | Yes | Our VM |
-| Web | FastAPI, plain HTML page, `livekit-client` | Yes | Our VM |
+| Web | FastAPI, plain HTML page, `livekit-client` | Yes | Our VM; the browser loads `livekit-client` from the jsDelivr CDN |
 | HTTPS | Caddy with Let's Encrypt | Yes | Our VM |
 
-No closed voice platform and no closed speech or LLM API is used.
+No closed voice platform and no closed speech or LLM API is used. The code imports LiveKit's
+`openai` plugin only because Cerebras speaks the same request format; the address it talks to is
+Cerebras's, and the model is the open-weight one above.
 
 **About Cerebras and cost, stated plainly.** Groq's free tier allows 200,000 tokens a day per
 model, which is roughly 100 replies on the best model. To stop the demo degrading after a
@@ -88,6 +90,13 @@ docker compose up --build
 
 Open http://localhost:8000 and press **Call**. The database tables are created and both demo
 businesses are loaded on first start.
+
+- The owner page (`/admin/sunrise-salon?key=...`) stays locked until you set `ADMIN_KEY` in `.env`.
+- Caddy also listens on ports 80 and 443. If they are taken, set `HTTP_PORT` and `HTTPS_PORT`
+  in `.env` (and `WEB_PORT` for 8000). Use port 8000 on a laptop; `https://localhost` works but
+  shows a certificate warning.
+- Optional settings with their defaults are listed at the bottom of `.env.example`
+  (`LLM_MODELS` sets the order of providers).
 
 Verified from a fresh `git clone` on the server (as a second, separate stack on other ports):
 all five containers started, both businesses were seeded, a scripted voice call was answered
@@ -322,14 +331,15 @@ Tests use a separate throwaway database, never the live one.
 |---|---|---|
 | `tests/test_booking.py` | Slots, hours, days, past times, the last slot of the day, a date in the wrong year, book, move, cancel, cancel twice, a passed booking, phone numbers written differently, the 2-hour rule, who may touch a booking | 28 |
 | `tests/test_double_booking.py` | 50 simultaneous attempts on one slot, 20 rounds: exactly one wins. Also racing reschedules, reschedule against a new booking, 30 callers for a just-cancelled slot. With the unique index removed, all four fail. | 4 |
+| `tests/test_prompt.py` | The instructions the agent gets: today and tomorrow follow the business's timezone (fixed clock, India and New York), the dated list behind "next Tuesday", opening times worked out from staff hours, no number from one business fixed in the rules | 4 |
 | `tests/test_tools.py` | Confirmation rules, the code-completed booking, a read-back the caller put off is never booked by a later "okay", privacy of tool answers | 12 |
 | `tests/test_owner_edits.py` | Owner edits: an edit that would leave an upcoming booking without a slot is refused and changes nothing (rename, slot length, hours, days, service moved); values that would break calls are refused; the owner key check | 8 |
 | `tests/test_isolation.py` | One business cannot see or change another's data | 7 |
 | `tests/test_stt_early.py` | Early speech to text, with the real voice detector and real recordings: one transcript per caller turn, the whole turn in it, no audio sent twice, at most 3 requests for a turn full of pauses, a failed transcription loses one turn but not the call | 5 |
 | `tests/test_tts_piper.py` | Where a long sentence is cut for Piper, and where it must not be (short sentences, "12,500", stray words); text with nothing to say ("...") is not sent to Piper | 6 |
-| `tests/test_conversations.py` | Simulated conversations with the real instructions, tools and model: the brief's 15 test questions, a full booking with "next Monday", "tomorrow", a taken slot, cancel, attempts to cancel someone else's booking, prompt tricks, a staff message, the second business | 25 |
+| `tests/test_conversations.py` | Simulated conversations with the real instructions, tools and model: the brief's 15 test questions, a full booking with "next Monday", "tomorrow", a taken slot, cancel, attempts to cancel someone else's booking, prompt tricks, a staff message, the second business, a reschedule, "next Tuesday", "how much is a haircut?" (two kinds), closing time | 29 |
 
-Last complete run, on the deployed server: **95 passed, 0 failed** (70 without an LLM, 25
+Last complete run, on the deployed server: **103 passed, 0 failed** (74 without an LLM, 29
 simulated conversations). Full list: [docs/test-results.txt](docs/test-results.txt).
 
 The simulated conversations call a hosted LLM, so they use tokens (about 100,000 per run) and
@@ -346,9 +356,17 @@ cancellation rule, no cash. It was added with that file and one command:
 docker compose exec -T web python -m app.manage load /dev/stdin < data/greenline-auto-care.yaml
 ```
 
-Time from running the command to a working call page: **16 seconds**. No code changed and
-nothing was restarted. Writing the file took the AI assistant under a minute; by hand, expect
-10 to 15 minutes (estimate).
+How long it took, in three parts:
+- **Writing the data file:** under a minute, by the AI assistant, from a one-line description.
+  By hand, copying the salon's file and changing the values, expect 10 to 15 minutes (an
+  estimate, not timed).
+- **Loading it:** 16 seconds from running the command to a call page that answered (timed by
+  hand on 26 November; no saved output).
+- **Checking it:** one scripted voice call and the isolation tests (not timed).
+
+No code changed and nothing was restarted. What the data format cannot express yet: a staff
+member has one range of hours, the same on every working day, so a lunch break or a short
+Saturday needs a code change (see Known gaps).
 
 ---
 
@@ -400,7 +418,8 @@ What would change, in order:
 ## Known gaps and limits
 
 - **Latency on the free tier alone misses the target** (median 1.43 s, p95 2.57 s). It meets
-  it with Cerebras first (1.03 s, 1.64 s), which uses credit rather than a free tier.
+  it with Cerebras first (0.81 s, 1.74 s), which uses credit rather than a free tier. The
+  free-tier figures were measured before the two latency fixes and were not repeated after them.
 - **Under several simultaneous calls p95 exceeds 2 s**, and about 3 to 5 callers is the
   practical limit on free tiers.
 - **Daily token limits.** After roughly 100 replies a day on Groq's best model, calls use
@@ -442,9 +461,20 @@ What would change, in order:
 - **Dates more than 10 days ahead** are not in the list the agent is given, so it has to work
   the date out itself. The booking tool still checks the date against real working days.
 - **The live demo depends on trial credit** (Oracle VM, Cerebras) that ends in late December 2026.
-- **Extras not built:** staff login and dashboard, analytics page, uploaded documents, human
-  handoff by email, embeddable widget, phone number over SIP, other languages, calendar sync,
-  confirmations and reminders.
+- **One range of hours per staff member**, the same on every working day. No lunch breaks, no
+  shorter Saturdays, no holidays or days off.
+- **"Tomorrow" and "next Tuesday" are worked out by the LLM** from a list of dated days it is
+  given in the business's timezone. The list is tested with a fixed clock in two timezones and
+  "next Tuesday" by conversation, but nothing in code corrects a wrong date that is still a
+  working day; the read-back, which says the weekday and date, is the check.
+- **Extras, partly built** (one small owner page behind a shared key, not a staff login): a
+  calls list with full transcripts and tool calls, editing business info that the next call
+  uses, latency by stage, and messages left for staff (stored, not emailed).
+- **Extras not built:** staff login, bookings list where staff cancel or mark done, agent
+  settings (voice, language, test call from the dashboard), analytics (calls per day, booking
+  rate, top questions), uploaded documents, human handoff with a ticket and an email,
+  embeddable widget, phone number over SIP, other languages, calendar sync, confirmations and
+  reminders.
 
 ---
 
@@ -461,10 +491,16 @@ app/call_log.py    records transcript, tool calls and latency per reply
 app/tts_piper.py   adapter from LiveKit Agents to the Piper service
 app/stt_early.py   starts speech to text during the end-of-speech wait
 app/web.py         call page and call token
+app/static/        the call page and the owner page (one HTML file each)
 app/admin.py       owner page: edit details, read call logs
 app/manage.py      command-line helper
 data/*.yaml        one file per business
 tests/             unit, double-booking, isolation and simulated-conversation tests
 scripts/           latency, concurrency, awkward-caller (edge_calls.py) and spike scripts
-docs/              EXPLAIN.md, HANDOVER.md, measurements
+docs/              EXPLAIN.md (plain-English walkthrough), HANDOVER.md, REQUIREMENTS_CHECK.md,
+                   RESEARCH.md (latency against published figures), DEMO_SCRIPT.md,
+                   test-results.txt, measurements/
+docker/            the Piper image
+Dockerfile, docker-compose.yml, Caddyfile, .env.example
+PLAN.md            the plan agreed before building
 ```

@@ -17,6 +17,7 @@ Every reply is measured this way, including replies that needed a tool call.
 """
 
 import asyncio
+import datetime as dt
 import logging
 import time
 
@@ -51,7 +52,8 @@ class CallRecorder:
 
     def write(self, kind: str, data: dict) -> None:
         """Save one event without making the conversation wait for the database."""
-        task = asyncio.create_task(db.log_event(self.call_id, kind, data))
+        # The time is taken here, not when the database gets round to it, so the log reads in order.
+        task = asyncio.create_task(db.log_event(self.call_id, kind, data, dt.datetime.now(dt.timezone.utc)))
         self.pending.add(task)
         task.add_done_callback(self.pending.discard)
 
@@ -119,7 +121,10 @@ class CallRecorder:
         self.used_tool = True
         for call, output in event.zipped():
             self.write("tool", {"name": call.name, "arguments": call.arguments,
-                                "result": output.output if output else None,
+                                # No result means the tool spoke to the caller itself and ended the
+                                # turn (the booking read-back does this).
+                                "result": (output.output if output else "")
+                                          or "(said to the caller directly; waiting for their answer)",
                                 "failed": bool(output and output.is_error)})
 
     def on_auto_booking(self, caller_text: str, result: str) -> None:

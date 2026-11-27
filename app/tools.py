@@ -202,6 +202,9 @@ def build_tools(business: dict, call_id: int, caller_turns=lambda: 0,
             chosen = booking.find_service(business, current["service"])
             slot = booking.check_slot(business, chosen, booking.parse_date(new_date),
                                       booking.parse_time(new_time), booking.now_at(business))
+            if slot not in await booking.free_slots(business, chosen, slot.date()):
+                return (f"Not moved. {booking.say_slot(slot)} is not free. The booking is unchanged. "
+                        "Check availability and offer another time.")
             if not caller_spoke_since_lookup():
                 return (f"NOT moved yet. Ask the caller to confirm: move {current['service']} from {current['when']} "
                         f"to {booking.say_slot(slot)}. When they say yes, call reschedule_booking again.")

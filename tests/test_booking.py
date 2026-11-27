@@ -45,8 +45,13 @@ def test_service_names_are_matched_forgivingly(salon):
     assert service(salon, "facial")["name"] == "Facial"
     with pytest.raises(BookingError, match="No service called"):
         service(salon, "nail art")
-    with pytest.raises(BookingError):       # "haircut" alone is ambiguous: men or women?
+    # "haircut" alone is ambiguous, and the error names the two choices so the agent can ask.
+    with pytest.raises(BookingError, match=r"could be: Haircut \(women\), Haircut \(men\)"):
         service(salon, "haircut")
+    # Names as speech to text writes them.
+    for heard, meant in [("mens haircut", "Haircut (men)"), ("haircut for men", "Haircut (men)"),
+                         ("hair color", "Hair colour"), ("clean up", "Clean-up"), ("facials", "Facial")]:
+        assert service(salon, heard)["name"] == meant
 
 
 # ---- availability ----

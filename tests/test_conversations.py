@@ -12,6 +12,7 @@ Skip these:                      docker compose --profile test run --rm tests py
 """
 
 import asyncio
+import json
 import datetime as dt
 import os
 import re
@@ -140,6 +141,7 @@ async def test_q06_book_me_a_facial_on_tuesday(salon):
     reply = await ask(salon, "Book me a facial on Tuesday.")
     assert "check_availability" in reply.tools            # it looked, it did not guess
     assert reply.has("kavya") and reply.has("tuesday")
+    assert reply.has("not", "n't", "off ", "unavailable")  # says she is NOT in that day
     assert reply.has("monday", "wednesday", "friday")     # offers a day she does work
     assert await count_bookings() == 0
 
@@ -147,8 +149,12 @@ async def test_q06_book_me_a_facial_on_tuesday(salon):
 async def test_q07_can_i_cancel_my_5pm_booking_at_4pm(salon):
     reply = await ask(salon, "Can I cancel my 5 PM booking at 4 PM?")
     assert reply.has("hour")                              # explains it is about the notice period
-    assert reply.has("not free", "isn't free", "not be free", "won't be free", "wouldn't be free",
-                     "no longer free", "charge", "fee")
+    # "free of charge" or "no fee" would be the wrong answer, so those words alone do not count.
+    cleaned = reply.low.replace("free of charge", "").replace("no fee", "").replace("no charge", "")
+    assert any(phrase in cleaned for phrase in (
+        "not free", "isn't free", "not be free", "won't be free", "wouldn't be free", "no longer free",
+        "charge", "fee"))
+    assert not re.search(r"(rs\.?|rupees|₹)\s*\d|\d+\s*(rs|rupees)", reply.low)  # no invented fee amount
     assert reply.has("can ", "yes", "possible")           # it CAN be cancelled
 
 
@@ -164,7 +170,7 @@ async def test_q08_can_i_pay_by_upi(salon):
 async def test_q09_membership_plan_is_not_on_file(salon):
     reply = await ask(salon, "Do you have a membership plan?")
     assert reply.has("don't have", "do not have", "no information", "no membership", "not have", "not on file")
-    assert reply.has("staff", "team")                     # offers to pass it on
+    assert reply.has("staff", "team") and reply.has("pass", "relay", "forward", "let them know", "message", "ask")                     # offers to pass it on
     assert not reply.has("rupees", "rs ")                 # did not invent a price
 
 
@@ -268,7 +274,8 @@ async def test_a_taken_slot_is_not_offered_or_booked(salon):
         assert "check_availability" in reply.tools
         # Either it says 11 is taken, or it simply offers the times that are free. What it must
         # never do is offer 11 AM itself.
-        says_taken = reply.has("taken", "not available", "isn't available", "unavailable", "booked", "not free", "isn't free")
+        says_taken = reply.has("taken", "not available", "isn't available", "unavailable", "booked", "not free",
+                               "isn't free", "isn't open", "not open", "no longer")
         offers_others = reply.has("10:30") and reply.has("11:30")
         offers_eleven = re.search(r"\b11(:00)? ?(am|a\.m\.)", reply.low) and not says_taken
         assert (says_taken or offers_others) and not offers_eleven
@@ -331,3 +338,41 @@ async def test_the_garage_agent_answers_as_the_garage(garage):
         assert price.has("1,800", "1800", "eighteen hundred", "one thousand eight hundred") and price.has("imran")
         other = await call.say("And how much is a men's haircut with Anita?")
         assert not other.has("400", "four hundred", "sunrise")   # it knows nothing about the salon
+
+
+# =====================================================================================
+# More of what the brief asks for, by conversation
+# =====================================================================================
+
+async def test_reschedule_by_conversation(salon):
+    day = anita_day(salon)
+    await booking.book(salon, "Haircut (men)", day.isoformat(), "10:00", "Asha Verma", PHONE)
+    async with Call(salon) as call:
+        first = await call.say(f"I want to move my appointment to 12 o'clock on the same day. "
+                               f"My phone number is {PHONE}.")
+        assert "find_my_bookings" in first.tools
+        mine = await booking.bookings_for_phone(salon, PHONE)
+        assert "10 AM" in mine[0]["when"], "moved before the caller confirmed"
+        await call.say("Yes, please move it.")
+    mine = await booking.bookings_for_phone(salon, PHONE)
+    assert len(mine) == 1 and "12 PM" in mine[0]["when"]   # same booking, new time
+    assert await count_bookings() == 1                     # and the old slot is free again
+
+
+async def test_next_tuesday_becomes_the_right_date(salon):
+    tuesday = next_weekday(salon, 1)
+    reply = await ask(salon, "Can I get a men's haircut next Tuesday at 11 in the morning?")
+    dates = [json.loads(arguments)["date"] for name, arguments in reply.calls if name == "check_availability"]
+    assert dates and all(date == tuesday.isoformat() for date in dates), dates
+
+
+async def test_a_service_that_comes_in_two_kinds_is_asked_about(salon):
+    reply = await ask(salon, "How much is a haircut?")
+    assert reply.has("women") and reply.has("men")         # asks which, or gives both prices
+    assert await count_bookings() == 0
+
+
+async def test_closing_time_is_answered_from_the_staff_hours(salon):
+    reply = await ask(salon, "What time do you close on Monday?")
+    assert reply.has("2 pm", "2 p.m.", "two", "2:00")      # Monday: 9 AM to 2 PM; nobody is in later
+    assert not reply.has("8 pm", "8 p.m.", "eight")

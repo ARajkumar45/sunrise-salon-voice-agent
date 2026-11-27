@@ -777,3 +777,71 @@ way. The second was a read-back that stayed open: a caller who said 'let me thin
 'okay, thanks' would have been booked. Both have tests. One thing I found and left for a
 human check is that the greeting cannot be interrupted in its first three seconds, which is
 the framework's echo guard."
+
+
+---
+
+## Last pass: the brief, line by line (Fri 27 Nov, mid-morning)
+
+### What was done
+Raj asked for a check of everything against the assignment PDF, using separate reviewers.
+Three reviewers each took a part of the brief (the demo data and the 15 test questions; the
+requirements and their evidence; the deliverables and the README) and compared it with the
+repository. At the same time I asked all 15 test questions **by voice** on the live agent and
+ran two calls racing for one slot again.
+
+### What held up
+- The salon's data matches the brief exactly: every name, day, hour, price, FAQ and
+  not-offered item.
+- All 15 questions were answered correctly by voice, and of two calls racing for 11 AM one was
+  booked and the other was told the slot had just been taken and was offered other times.
+- No closed model or platform, no secret in the repository, everything pushed.
+
+### What was wrong and is now fixed
+1. **Reschedule was never proven end to end.** There were tests of the function and the tool,
+   but no conversation and no voice call moved a booking. Now there is a simulated conversation
+   and a voice call that books, moves to 12:30 and cancels the same booking. The move tool also
+   now checks the new time is free before asking the caller to confirm.
+2. **"Next Tuesday" had no test, and the timezone test only meant something late in the
+   evening.** `tests/test_prompt.py` now fixes the clock at 20:00 UTC and checks that "today"
+   is the 24th in India and the 23rd in New York.
+3. **A salon number was written into the rules for every business.** The rules gave "less than
+   2 hours before" as an example. A garage with a 24-hour rule got the same sentence. Removed.
+4. **"Book me a haircut."** There are two haircuts. The tool said "No service called
+   'haircut'", which is misleading. It now says "could be: Haircut (women), Haircut (men). Ask
+   the caller which one", and the agent asks. Names as speech to text writes them ("hair
+   color", "mens haircut", "clean up") are now matched.
+5. **"What time do you close?"** The agent had only each person's hours. The instructions now
+   include a line worked out from them, for example "Monday 9 AM to 2 PM; Tuesday 10 AM to 2 PM
+   and 4 PM to 8 PM".
+6. **"Can I speak to a human?"** was refused as off-topic. The agent now says it cannot
+   transfer the call and offers to take a message.
+7. **Two answers were sometimes incomplete.** "Can I pay by UPI?" once got "yes" without the
+   other methods; "Do you have a membership plan?" once got "no information" without the offer
+   to pass it on. The rules were tightened and six sensitive questions repeated four times:
+   24 of 24 complete.
+8. **Call log:** lines could appear slightly out of order and the first booking step showed an
+   empty result. Each line now carries the time it happened, and the read-back step says what
+   it did.
+9. **Documents:** the handover note was two pages (now one); the README's known gaps quoted an
+   old latency figure; the test counts and a few timings disagreed between documents.
+
+### A mistake I made on the way
+To remove the "2 hours" example I first replaced it with a vaguer sentence. The very next
+run, the agent answered "Can I cancel my 5 PM booking at 4 PM?" with "may I have your phone
+number?", which is wrong. I caught it because the test for that question had just been made
+stricter. The rule now says that a "can I ..." question about cancelling is a question about
+the rules, to be answered without asking for a number.
+
+### Earlier sections of this file
+The numbers in the milestone sections above are what was true on that day (for example "22
+replies, median about 1.0 s" and "59 tests"). The current figures are: 103 tests; latency
+median 0.81 s and 95th percentile 1.74 s over 66 replies (0.76 s and 1.71 s in the repeat run).
+
+### How to explain this on the review call
+"On the last morning I had three reviewers check the work against your brief line by line,
+and I asked your 15 questions by voice. The data and the answers held. What did not was the
+proof for rescheduling and for 'next Tuesday', which I had claimed on thinner evidence than I
+realised, and a salon-specific number that had crept into the shared rules. All three are
+fixed and tested. I also learned that a small wording change in the rules can break an answer
+that worked, which is why each of your questions has its own test."

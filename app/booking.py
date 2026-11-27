@@ -9,6 +9,7 @@ staff member and start time. Here we just catch that rejection and report "taken
 """
 
 import datetime as dt
+import difflib
 from zoneinfo import ZoneInfo
 
 from psycopg.errors import UniqueViolation
@@ -29,18 +30,36 @@ def now_at(business: dict) -> dt.datetime:
     return dt.datetime.now(ZoneInfo(business["timezone"]))
 
 
+FILLER_WORDS = {"a", "an", "the", "for", "with", "and", "of", "s"}
+
+
+def name_words(name: str) -> set[str]:
+    """'Haircut (men)' -> {'haircut', 'men'}; "men's haircuts" -> the same. Plurals and
+    punctuation are dropped so a spoken name can be matched to a written one."""
+    plain = "".join(ch if ch.isalnum() else " " for ch in name.lower().replace("'s", " ").replace("’s", " "))
+    words = {word[:-1] if len(word) > 3 and word.endswith("s") else word for word in plain.split()}
+    return words - FILLER_WORDS
+
+
 def find_service(business: dict, name: str) -> dict:
-    wanted = name.strip().lower()
-    for service in business["services"]:
-        if service["name"].lower() == wanted:
+    services = business["services"]
+    for service in services:
+        if service["name"].lower() == name.strip().lower():
             return service
-    # Forgiving match: "men's haircut" should find "Haircut (men)".
-    words = set(wanted.replace("'s", "").replace("(", " ").replace(")", " ").split())
-    matches = [s for s in business["services"]
-               if words and words <= set(s["name"].lower().replace("(", " ").replace(")", " ").split())]
+    # Forgiving match: "men's haircut", "mens haircut" and "haircut for men" find "Haircut (men)".
+    wanted = name_words(name)
+    matches = [s for s in services if wanted and wanted <= name_words(s["name"])]
+    if not matches:
+        # Speech to text spells some words differently ("hair color" for "Hair colour").
+        close = difflib.get_close_matches(" ".join(sorted(wanted)),
+                                          [" ".join(sorted(name_words(s["name"]))) for s in services], n=2, cutoff=0.85)
+        matches = [s for s in services if " ".join(sorted(name_words(s["name"]))) in close]
     if len(matches) == 1:
         return matches[0]
-    names = ", ".join(s["name"] for s in business["services"])
+    if len(matches) > 1:
+        raise BookingError(f"'{name}' could be: {', '.join(s['name'] for s in matches)}. "
+                           "Ask the caller which one they mean.")
+    names = ", ".join(s["name"] for s in services)
     raise BookingError(f"No service called '{name}'. The services are: {names}.")
 
 
